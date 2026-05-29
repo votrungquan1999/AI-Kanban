@@ -1,0 +1,22 @@
+# Per-card git worktrees of other repos — created at runtime, never tracked
+# (these contain nested working trees; tracking them would flood git status)
+/workspaces/
+
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp

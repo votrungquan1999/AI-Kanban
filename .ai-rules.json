@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "agent": "claude-code",
+  "categories": [
+    "brainstorming-patterns",
+    "component-architecture",
+    "database-patterns",
+    "meta-rules",
+    "react-hooks",
+    "react-server-components",
+    "styling-tailwind",
+    "testing-guidelines",
+    "typescript-conventions",
+    "url-state-management"
+  ],
+  "skills": [
+    "bdd-design",
+    "code-refactoring",
+    "commit-plan",
+    "context7",
+    "create-implementation-plan",
+    "create-pr",
+    "feature-development-workflow",
+    "find-patterns",
+    "orchestrated-feature-dev",
+    "repo-knowledge",
+    "review-changes",
+    "root-cause-analysis",
+    "structured-brainstorming",
+    "tdd-design",
+    "test-quality-reviewer",
+    "validate-pr-comments",
+    "web-search"
+  ]
+}
