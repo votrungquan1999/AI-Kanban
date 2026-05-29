@@ -19,7 +19,12 @@ export async function bootstrapIndexes(db: Db): Promise<void> {
     { dedupeKey: 1 },
     {
       unique: true,
-      partialFilterExpression: { status: { $in: OPEN_STATUSES } },
+      // Only enforce uniqueness among OPEN cards that actually carry a string
+      // dedupeKey — manual cards (dedupeKey: null) must never collide.
+      partialFilterExpression: {
+        dedupeKey: { $type: "string" },
+        status: { $in: OPEN_STATUSES },
+      },
     },
   );
 }

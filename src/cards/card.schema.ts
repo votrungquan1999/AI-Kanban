@@ -24,5 +24,8 @@ export const createTaskInputSchema = z.object({
   dedupeKey: z.string().nullish(),
 });
 
-export type CreateTaskInput = z.infer<typeof createTaskInputSchema>;
-export type Origin = z.infer<typeof originSchema>;
+/** Caller-facing input (defaulted/optional fields may be omitted). */
+export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
+/** Fully-parsed input (defaults applied). */
+export type ParsedCreateTaskInput = z.output<typeof createTaskInputSchema>;
+export type Origin = z.output<typeof originSchema>;

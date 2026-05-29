@@ -48,4 +48,32 @@ Resolved stack (newer than plan assumed): **Next 16 · React 19 · Tailwind v4 �
 
 ---
 
-**Quality checkpoint (data layer, Steps 1–4):** full suite 7/7 green across 5 files. Quality-gate review pending.
+**Quality checkpoint (data layer, Steps 1–4):** full suite 7/7 green. Quality-gate **PASS** (2 import-order fixes). Committed `b321376`.
+
+### Step 5: createTask
+
+**Status:** ✅ Done
+
+**Tests (3 passing ✅):** 1. persists todo card w/ number + defaults; 2. duplicate open dedupeKey → ERR_DUPLICATE; 3. multiple manual null-dedupeKey cards allowed.
+
+**Notes:** `src/cards/errors.ts` (AppError + ErrorCode enum), `src/cards/card.mapper.ts` (doc→client), `card.service.ts` createTask. **Bug fix:** dedupeKey partial index now filters `dedupeKey: {$type:"string"}` so null-dedupe manual cards don't collide. `CreateTaskInput` switched to `z.input`.
+
+### Step 6: listTasks
+
+**Status:** ✅ Done
+
+**Tests (2 passing ✅):** 1. sorted priority desc then createdAt asc; 2. filters by status + returns clean client objects (no `_id`).
+
+**Notes:** `listTasks(filter?)` in card.service.ts; sort `{priority:-1, createdAt:1}`.
+
+### Step 7: updateTaskStatus
+
+**Status:** ✅ Done
+
+**Tests (2 passing ✅):** 1. any→any move (UI) sets pickedAt (first in_progress) + finishedAt (done) + bumps updatedAt, preserves pickedAt; 2. unknown id → ERR_NOT_FOUND.
+
+**Notes:** `src/cards/transition-policy.ts` (Caller enum + `canTransition` seam — UI any→any). Atomic aggregation-pipeline `findOneAndUpdate` with `$ifNull`/`$$NOW` for conditional timestamps.
+
+---
+
+**Quality checkpoint (service layer, Steps 5–7):** full suite 14/14 green across 6 files. Quality-gate review pending.
