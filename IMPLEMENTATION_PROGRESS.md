@@ -76,4 +76,32 @@ Resolved stack (newer than plan assumed): **Next 16 · React 19 · Tailwind v4 �
 
 ---
 
-**Quality checkpoint (service layer, Steps 5–7):** full suite 14/14 green across 6 files. Quality-gate review pending.
+**Quality checkpoint (service layer, Steps 5–7):** full suite 14/14 green. Quality-gate **PASS** (1 import-order fix). Committed `d05f865`.
+
+### Step 8: Board page (4 columns, Server Component)
+
+**Status:** ✅ Done
+
+**Tests (1 passing ✅):** 1. `Board` renders the four columns and their cards.
+
+**Notes:** `app/(board)/`: `board.type.ts`, `board.columns.ts` (groupIntoColumns), `card.ui.tsx`, `column.ui.tsx`, `board-layout.ui.tsx`, `board.tsx` (composition), `board-shell.ui.tsx`; `app/page.tsx` reads `listTasks` and renders. Styling kept in `*.ui.tsx` per server-components-rules §2.
+
+### Step 9: Add-task dialog + Server Action
+
+**Status:** ✅ Done
+
+**Tests (2 passing ✅):** 1. renders nothing when closed; 2. submits + shows the action's validation error.
+
+**Notes:** `actions.ts` (`createTaskAction`, shared Zod validation → create → revalidate → redirect), `add-task-dialog.tsx` (action injected as prop for testability + to avoid server-only imports), `add-task-form.ui.tsx`, `add-task.type.ts`, `href.ts`. Dialog open state via `?new=task` URL param read in `page.tsx`.
+
+### Step 10: Drag-to-move (optimistic UI)
+
+**Status:** ✅ Done
+
+**Tests (1 passing ✅):** 1. `applyOptimisticMove` moves a card to the target column + updates status (pure logic). Drag interaction itself validated via this pure fn + tested `updateTaskStatus` + `useOptimistic` framework revert (full drag E2E deferred — needs Playwright, not jsdom).
+
+**Notes:** `board.move.ts` (pure optimistic move), `board.tsx` now client (`useOptimistic` + dnd-kit `DndContext`), `draggable-card.ui.tsx` / `droppable-column.ui.tsx` wrappers, `moveCard` action. `moveAction` injected as prop so `board.tsx` has no Mongo imports.
+
+---
+
+**Quality checkpoint (UI layer, Steps 8–10):** full suite 18/18 green across 9 files. Quality-gate review pending.
