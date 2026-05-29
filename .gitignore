@@ -17,6 +17,18 @@ build/
 *.log
 npm-debug.log*
 
+# Next.js
+.next/
+next-env.d.ts
+
+# orchestrated-feature-dev scratch state (IMPLEMENTATION_PROGRESS.md is kept tracked)
+RESEARCH_OUTPUT.md
+RESEARCH_FOLLOWUP_*.md
+PLAN_STEPS.md
+implementation-plan.md
+INVESTIGATION_STEP_*.md
+VALIDATION_STEP_*.md
+
 # OS / editor
 .DS_Store
 *.swp
