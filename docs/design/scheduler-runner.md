@@ -150,7 +150,7 @@ These runtime fields on `cards` are managed solely by the scheduler/runner (adde
 ## Open questions
 
 1. **`scrapeStdout` timeout `T`** and exact URL format — pins on the Spike #1 hands-on test.
-2. **Bootstrap prompt** content (generic resume-aware prompt + prohibition list) — its own doc.
+2. **Bootstrap prompt** content (generic resume-aware prompt + prohibition list) — see [bootstrap-prompt.md](./bootstrap-prompt.md).
 3. **WIP_LIMIT** default (start at 1 per the brainstorm slice plan, raise once stable).
 4. **Worktree cleanup timing** — on `done` immediately, or keep until the branch is merged/reviewed.
 5. **Backoff curve / `MAX_RESTARTS`** values.

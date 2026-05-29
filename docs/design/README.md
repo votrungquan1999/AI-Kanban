@@ -21,5 +21,7 @@ An **autonomous task-orchestration loop** with a phone-first review surface (a 4
 | [data-model.md](./data-model.md) | MongoDB collections, embedding, indexes, atomic patterns | draft |
 | [mcp-api-contract.md](./mcp-api-contract.md) | The tool surface: signatures, callers, agent scoping, transitions | draft |
 | [scheduler-runner.md](./scheduler-runner.md) | Reconcile loop, two-axis state, per-card process model, crash recovery | draft |
+| [bootstrap-prompt.md](./bootstrap-prompt.md) | The generic, resume-aware prompt injected into every session | draft |
+| [web-ui.md](./web-ui.md) | Next.js board: RSC reads, Server Action writes, polling, drag, card detail | draft |
 
-_(more to come: bootstrap prompt, repo skeleton)_
+_(more to come: recurring intake / Notion source)_
