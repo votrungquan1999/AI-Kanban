@@ -104,4 +104,31 @@ Resolved stack (newer than plan assumed): **Next 16 · React 19 · Tailwind v4 �
 
 ---
 
-**Quality checkpoint (UI layer, Steps 8–10):** full suite 18/18 green across 9 files. Quality-gate review pending.
+**Quality checkpoint (UI layer, Steps 8–10):** full suite 18/18 green; `tsc --noEmit` clean. Quality-gate **PASS** (layout.tsx import-order + JSDoc fixed). Committed `1c27ddc`.
+
+---
+
+## Known rule-deviations (flagged for user decision — project-foundation choices)
+
+These are NOT in the slice plan/scaffolding and require a project-wide foundation:
+
+1. **shadcn/ui** (`component-library.md`): the slice uses plain `<form>/<button>/<input>` and a custom dialog/overlay instead of shadcn `Dialog/Button/Input/Card`. shadcn was never initialized (no `components.json`, no `src/components/ui/`, no `cn`).
+2. **Tailwind tokens/layout** (`tailwind-basics.md`): `.ui` files use fixed palette (`bg-gray-50`, `text-red-600`, `bg-black/30`), `flex`, `w-72`, and `fixed inset-0` instead of tokenized colors (`bg-primary`…), `grid`, `size-*`, and `pile`. Tokenized colors require a theme/token layer (part of shadcn init) that doesn't exist yet.
+
+Both depend on standing up a shadcn + design-token foundation — recommend a dedicated follow-up step. Functional behavior is complete, tested (18/18), and type-clean regardless.
+
+---
+
+## Final status — slice COMPLETE ✅
+
+- **Steps 0–10:** all ✅ Done.
+- **Tests:** 18 passing across 9 files (Vitest + mongodb-memory-server). `npx tsc --noEmit` clean (0 errors).
+- **Quality gates:** data / service / UI layers all PASS.
+- **Validation (independent):** all steps VALID; Step 10 valid-with-caveats (drag-gesture + revert-on-error path deferred to Playwright — jsdom can't drive dnd-kit).
+- **Commits:** `45038b6` scaffold · `b321376` data layer · `d05f865` service layer · `1c27ddc` UI layer.
+
+**Follow-ups (recommended, not blockers):**
+1. shadcn/ui + design-token foundation, then refactor `.ui` components to shadcn + tokenized colors / `grid` / `size-*` / `pile` (see Known rule-deviations).
+2. Playwright E2E for the drag-to-move gesture + optimistic revert.
+3. Set `MONGODB_URI` (+ optional `MONGODB_DB`) env before running `next dev` — the board page reads Mongo at request time.
+4. Optional: add a lint tool (biome/eslint) to enforce the import-ordering convention in CI (currently editor-only).
