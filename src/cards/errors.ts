@@ -4,6 +4,7 @@ export enum ErrorCode {
   Duplicate = "ERR_DUPLICATE",
   NotFound = "ERR_NOT_FOUND",
   InvalidTransition = "ERR_INVALID_TRANSITION",
+  SchemaDrift = "ERR_SCHEMA_DRIFT",
 }
 
 /** A domain error carrying a stable {@link ErrorCode}. */

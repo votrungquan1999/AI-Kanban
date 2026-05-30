@@ -1,8 +1,9 @@
 import { type Filter, ObjectId } from "mongodb";
+import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
 import {
-  cardIdSchema,
   type CreateTaskInput,
+  cardIdSchema,
   createTaskInputSchema,
   type ParsedCreateTaskInput,
 } from "@/cards/card.schema";
@@ -14,10 +15,13 @@ import {
   RunState,
   Status,
 } from "@/cards/card.type";
+import { emitCardEvent } from "@/cards/card-event.service";
+import { EventOutcome } from "@/cards/card-event.type";
 import { nextNumber } from "@/cards/counters";
 import { AppError, ErrorCode } from "@/cards/errors";
 import { Caller, legalFromStatuses } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
+import { findManyZ, findOneAndUpdateZ, findOneZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
 
 /** Optional filter for {@link listTasks}. */
@@ -40,7 +44,9 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 /** Converts parsed client origin (hex ids) into a stored origin (ObjectId). */
-function toOriginDocument(origin: ParsedCreateTaskInput["origin"]): OriginDocument {
+function toOriginDocument(
+  origin: ParsedCreateTaskInput["origin"],
+): OriginDocument {
   if (origin.type === OriginType.Recurring) {
     return { type: OriginType.Recurring, defId: new ObjectId(origin.defId) };
   }
@@ -96,6 +102,15 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
     throw error;
   }
 
+  await emitCardEvent(db, {
+    cardId: doc._id,
+    from: null,
+    to: Status.Todo,
+    caller: Caller.Ui,
+    outcome: EventOutcome.Success,
+    error: null,
+  });
+
   return toClientCard(doc);
 }
 
@@ -109,7 +124,11 @@ export async function getTask(id: string): Promise<Card> {
   const cardId = cardIdSchema.parse(id);
   const db = await getDb();
 
-  const doc = await cardsCollection(db).findOne({ _id: new ObjectId(cardId) });
+  const doc = await findOneZ(
+    cardsCollection(db),
+    { _id: new ObjectId(cardId) },
+    cardDocumentSchema,
+  );
   if (!doc) {
     throw new AppError(ErrorCode.NotFound, `card ${id} not found`);
   }
@@ -131,10 +150,9 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
     query.status = filter.status;
   }
 
-  const docs = await cardsCollection(db)
-    .find(query)
-    .sort({ priority: -1, createdAt: 1 })
-    .toArray();
+  const docs = await findManyZ(cardsCollection(db), query, cardDocumentSchema, {
+    sort: { priority: -1, createdAt: 1 },
+  });
 
   return docs.map(toClientCard);
 }
@@ -165,6 +183,11 @@ export async function updateTaskStatus(
   const isToInProgress = status === Status.InProgress;
   const isToDone = status === Status.Done;
 
+  // Read the pre-image once: it provides the `from` status for the audit event
+  // and disambiguates a miss (missing card vs illegal transition). Raw read (not
+  // findOneZ) so a drifted doc here cannot mask NotFound/InvalidTransition.
+  const preImage = await cardsCollection(db).findOne({ _id });
+
   // UI overrides any→any (bare `_id` filter); other callers are constrained to
   // their legal source statuses via `$in`, so an illegal move matches nothing.
   const filter =
@@ -172,7 +195,8 @@ export async function updateTaskStatus(
       ? { _id }
       : { _id, status: { $in: legalFromStatuses(caller, status) } };
 
-  const updated = await cardsCollection(db).findOneAndUpdate(
+  const updated = await findOneAndUpdateZ(
+    cardsCollection(db),
     filter,
     [
       {
@@ -186,20 +210,41 @@ export async function updateTaskStatus(
         },
       },
     ],
+    cardDocumentSchema,
     { returnDocument: "after" },
   );
 
   if (!updated) {
-    // The update matched nothing: disambiguate missing vs illegal transition.
-    const existing = await cardsCollection(db).findOne({ _id });
-    if (!existing) {
-      throw new AppError(ErrorCode.NotFound, `card ${id} not found`);
-    }
-    throw new AppError(
-      ErrorCode.InvalidTransition,
-      `caller "${caller}" may not move card ${id} from "${existing.status}" to "${status}"`,
-    );
+    // The update matched nothing: disambiguate missing vs illegal transition
+    // using the pre-image already read above, record a failure event (with the
+    // error detail for developer investigation), then throw.
+    const error = preImage
+      ? new AppError(
+          ErrorCode.InvalidTransition,
+          `caller "${caller}" may not move card ${id} from "${preImage.status}" to "${status}"`,
+        )
+      : new AppError(ErrorCode.NotFound, `card ${id} not found`);
+
+    await emitCardEvent(db, {
+      cardId: _id,
+      from: preImage?.status ?? null,
+      to: status,
+      caller,
+      outcome: EventOutcome.Failure,
+      error: { code: error.code, message: error.message },
+    });
+
+    throw error;
   }
+
+  await emitCardEvent(db, {
+    cardId: _id,
+    from: preImage?.status ?? null,
+    to: status,
+    caller,
+    outcome: EventOutcome.Success,
+    error: null,
+  });
 
   return toClientCard(updated);
 }

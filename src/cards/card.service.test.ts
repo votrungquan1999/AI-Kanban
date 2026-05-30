@@ -89,9 +89,9 @@ describe("getTask", () => {
 
   it("throws ERR_NOT_FOUND for an unknown id", async () => {
     // Given a well-formed but unused id, When fetched, Then it is not found
-    await expect(
-      getTask(new ObjectId().toHexString()),
-    ).rejects.toMatchObject({ code: ErrorCode.NotFound });
+    await expect(getTask(new ObjectId().toHexString())).rejects.toMatchObject({
+      code: ErrorCode.NotFound,
+    });
   });
 });
 

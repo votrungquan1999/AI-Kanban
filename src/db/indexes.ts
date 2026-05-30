@@ -1,6 +1,6 @@
 import type { Db } from "mongodb";
 import { Status } from "@/cards/card.type";
-import { cardsCollection } from "@/db/collections";
+import { cardEventsCollection, cardsCollection } from "@/db/collections";
 
 /** Statuses considered "open" — a dedupeKey may only repeat once these clear. */
 const OPEN_STATUSES = [Status.Todo, Status.InProgress, Status.NeedReview];
@@ -27,4 +27,7 @@ export async function bootstrapIndexes(db: Db): Promise<void> {
       },
     },
   );
+
+  // Chronological read-back of a card's audit events.
+  await cardEventsCollection(db).createIndex({ cardId: 1, at: 1 });
 }
