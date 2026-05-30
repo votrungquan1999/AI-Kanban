@@ -8,8 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AddTaskForm } from "./add-task-form.ui";
 import type { AddTaskState } from "./add-task.type";
+import { AddTaskForm } from "./add-task-form.ui";
 import { boardHref } from "./href";
 
 const initialState: AddTaskState = {};

@@ -2,8 +2,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { AddTaskDialog } from "./add-task-dialog";
 import type { AddTaskState } from "./add-task.type";
+import { AddTaskDialog } from "./add-task-dialog";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),

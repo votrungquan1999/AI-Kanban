@@ -58,7 +58,10 @@ test("drags a card from Todo to In Progress", async ({ page }) => {
     throw new Error("could not measure drag source/target");
   }
 
-  await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+  await page.mouse.move(
+    source.x + source.width / 2,
+    source.y + source.height / 2,
+  );
   await page.mouse.down();
   await page.mouse.move(
     source.x + source.width / 2 + 8,
@@ -73,7 +76,9 @@ test("drags a card from Todo to In Progress", async ({ page }) => {
   await page.mouse.up();
 
   // The card now lives in the In Progress lane, not Todo.
-  await expect(inProgressLane.getByText("Draggable", { exact: true })).toBeVisible();
+  await expect(
+    inProgressLane.getByText("Draggable", { exact: true }),
+  ).toBeVisible();
   const todoLane = page.locator("section").filter({ hasText: "Todo" });
   await expect(todoLane.getByText("Draggable", { exact: true })).toBeHidden();
 });

@@ -40,9 +40,7 @@ export function appErrorToToolResult(error: AppError): CallToolResult {
  * @param cardId - The card the session is scoped to.
  * @returns A handler returning the bound card as success structured content.
  */
-export function createGetMyTask(
-  cardId: string,
-): () => Promise<CallToolResult> {
+export function createGetMyTask(cardId: string): () => Promise<CallToolResult> {
   return async () => {
     try {
       return toCardResult(await getTask(cardId));

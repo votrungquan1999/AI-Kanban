@@ -1,4 +1,4 @@
-import { MongoClient, type Db } from "mongodb";
+import { type Db, MongoClient } from "mongodb";
 
 interface MongoConnection {
   client: MongoClient;

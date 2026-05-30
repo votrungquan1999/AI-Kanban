@@ -30,7 +30,10 @@ export async function createTaskAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  await createTask({ title: parsed.data.title, origin: { type: OriginType.Manual } });
+  await createTask({
+    title: parsed.data.title,
+    origin: { type: OriginType.Manual },
+  });
   revalidatePath("/");
   redirect("/");
 }
@@ -41,7 +44,10 @@ export async function createTaskAction(
  * @param cardId - The card's hex id.
  * @param toStatus - The target status/column.
  */
-export async function moveCard(cardId: string, toStatus: Status): Promise<void> {
+export async function moveCard(
+  cardId: string,
+  toStatus: Status,
+): Promise<void> {
   await updateTaskStatus(cardId, toStatus, { caller: Caller.Ui });
   revalidatePath("/");
 }

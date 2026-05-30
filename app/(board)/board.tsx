@@ -9,9 +9,9 @@ import {
 } from "@dnd-kit/core";
 import { startTransition, useOptimistic } from "react";
 import type { Status } from "@/cards/card.type";
-import { BoardLayout } from "./board-layout.ui";
 import { applyOptimisticMove } from "./board.move";
 import type { BoardColumnView } from "./board.type";
+import { BoardLayout } from "./board-layout.ui";
 import { DraggableCard } from "./draggable-card.ui";
 import { DroppableColumn } from "./droppable-column.ui";
 
