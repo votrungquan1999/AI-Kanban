@@ -23,5 +23,6 @@ An **autonomous task-orchestration loop** with a phone-first review surface (a 4
 | [scheduler-runner.md](./scheduler-runner.md) | Reconcile loop, two-axis state, per-card process model, crash recovery | draft |
 | [bootstrap-prompt.md](./bootstrap-prompt.md) | The generic, resume-aware prompt injected into every session | draft |
 | [web-ui.md](./web-ui.md) | Next.js board: RSC reads, Server Action writes, polling, drag, card detail | draft |
+| [next-actions.md](./next-actions.md) | Backlog of ready-to-pick work surfaced during dev: engineering hygiene (Biome + CI), audit/event log, parse-on-read DB wrapper | backlog |
 
 _(more to come: recurring intake / Notion source)_

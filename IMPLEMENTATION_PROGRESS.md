@@ -141,3 +141,156 @@ Both depend on standing up a shadcn + design-token foundation — recommend a de
 2. Playwright E2E for the drag-to-move gesture + optimistic revert.
 3. Set `MONGODB_URI` (+ optional `MONGODB_DB`) env before running `next dev` — the board page reads Mongo at request time.
 4. Optional: add a lint tool (biome/eslint) to enforce the import-ordering convention in CI (currently editor-only).
+
+---
+
+# Slice 2: MCP Server (card-scoped agent tools over stdio)
+
+Plan: [PLAN_STEPS.md](./PLAN_STEPS.md) · Research: [RESEARCH_OUTPUT.md](./RESEARCH_OUTPUT.md)
+Scope: stdio transport, one server per session (CARD_ID env-injected). Two agent tools, no `id` arg: `get_my_task`, `set_my_status`. SDK `@modelcontextprotocol/sdk@1.29.0` (already in node_modules). Errors RETURNED (isError:true) so the agent reads ERR_* codes.
+
+### Step 1: getTask(id) returns client-facing card
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/cards/card.service.ts`: added `getTask(id)` (validates via `cardIdSchema`, `findOne`, throws `ERR_NOT_FOUND` on null, maps via `toClientCard`); added `cardIdSchema` import.
+- `src/cards/card.service.ts`: `createTask` insert now uses `{ ignoreUndefined: true }` — root-cause fix for a discovered inconsistency (omitted `description` was serialized to BSON null on insert, so reads returned `null`, violating `Card.description?: string` and diverging from `createTask`'s own return).
+- `src/cards/card.service.test.ts`: new `describe("getTask")` happy-path test.
+
+**Regressions:** none (8/8 in the file pass).
+**Notes:** The `ignoreUndefined` fix keeps create/read consistent and the client type sound — surfaced by the deep-equal assertion, exactly the kind of inconsistency the prior dedupeKey/null bug taught us to watch for.
+
+### Step 2: getTask(unknown) → ERR_NOT_FOUND
+
+**Status:** ✅ Done
+**Test Result:** green on first run (throw implemented in Step 1; this test validates it)
+
+**Files Changed:**
+- `src/cards/card.service.test.ts`: added the not-found test to `describe("getTask")`.
+
+**Regressions:** none.
+
+### Step 3: (caller, to) transition matrix — `legalFromStatuses`
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/cards/transition-policy.ts`: added `legalFromStatuses(caller, to): Status[]` (additive — `canTransition` left intact for Step 5 to migrate). UI → all statuses; Agent → the 4 legal edges' from-sets; scheduler/other → []. Added `Status` import + `AGENT_EDGES` table.
+- `src/cards/transition-policy.test.ts`: new file, 3 tests (agent matrix, UI any→any, scheduler empty).
+
+**Regressions:** none.
+**Notes:** Chose a set-returning helper (not a boolean) so Step 5 can feed the from-set straight into the Mongo `$in` filter.
+
+### Step 4: UI any→any still works (override guard)
+
+**Status:** ✅ Done
+**Test Result:** green (pre-Step-5 impl already allowed it; guard locks it in)
+
+**Files Changed:**
+- `src/cards/card.service.test.ts`: added a direct `todo -> done` UI move test (an edge the agent may not take), proving the UI path bypasses the from-set filter.
+
+### Step 5: Agent legal-edge move (atomic) + lifecycle stamping
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/cards/card.service.ts`: reworked `updateTaskStatus` — branch by caller (UI → bare `{_id}` any→any; agent/other → `{_id, status: {$in: legalFromStatuses(caller, to)}}` on the same `findOneAndUpdate`); on a miss, a single follow-up `findOne` disambiguates NotFound vs InvalidTransition. Swapped the `canTransition` import for `legalFromStatuses`. Updated JSDoc.
+- `src/cards/transition-policy.ts`: removed the now-dead `canTransition` (fully superseded; no remaining callers).
+- `src/cards/card.service.test.ts`: added agent `in_progress -> done` test (asserts move + finishedAt + pickedAt preserved); added `Caller` import.
+
+**Regressions:** none (13/13). tsc clean.
+**Notes:** Happy path stays one atomic write; the extra `findOne` runs only on the rare miss path.
+
+### Step 6: Agent illegal-edge move → ERR_INVALID_TRANSITION
+
+**Status:** ✅ Done
+**Test Result:** green (validates Step 5's disambiguation: existing doc + illegal source)
+
+**Files Changed:**
+- `src/cards/card.service.test.ts`: agent `todo -> done` rejected as InvalidTransition; asserts the card is left unchanged.
+
+### Step 7: Agent move on missing card → ERR_NOT_FOUND (not InvalidTransition)
+
+**Status:** ✅ Done
+**Test Result:** green (validates the miss-path disambiguation when no doc exists)
+
+**Files Changed:**
+- `src/cards/card.service.test.ts`: agent move on an unused id reports NotFound.
+
+**Regressions:** none across the file (13/13).
+
+### Step 8: appErrorToToolResult mapper
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/mcp/tools.ts` (new): `appErrorToToolResult(error)` → `{isError:true, structuredContent:{code,message}, content:[text]}`; `CallToolResult` imported as `import type` from `@modelcontextprotocol/sdk/types.js`.
+- `src/mcp/tools.test.ts` (new): unit test asserting the ERR_* code in both text and structuredContent.
+
+### Step 9: get_my_task handler (factory)
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/mcp/tools.ts`: `createGetMyTask(cardId)` factory → handler calling `getTask(cardId)`, returning success structured content; one try/catch boundary mapping `AppError` → error result, re-throwing others.
+- `src/mcp/tools.test.ts`: in-process integration test (useTestMongo, no transport).
+
+### Step 10: set_my_status handler — legal move
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/mcp/tools.ts`: `createSetMyStatus(cardId)` factory → handler calling `updateTaskStatus(cardId, status, {caller: Agent})`. Added `toCardResult(card)` shared success builder (spread into a record to satisfy `structuredContent`'s index-signature shape — fixed a tsc error where `Card` interface isn't assignable to `Record<string, unknown>`).
+- `src/mcp/tools.test.ts`: in-process test for the legal in_progress→need_review edge.
+
+### Step 11: set_my_status handler — illegal move → error result
+
+**Status:** ✅ Done
+**Test Result:** green (validates the handler's error boundary)
+
+**Files Changed:**
+- `src/mcp/tools.test.ts`: agent todo→done returns `isError:true` with `structuredContent.code === ERR_INVALID_TRANSITION`.
+
+**Regressions:** none. tsc clean (the "two CallToolResult types" cascade was the index-signature mismatch; resolved by `toCardResult`).
+
+### Step 12: createMcpServer factory registers the two tools
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/mcp/server.ts` (new): `createMcpServer({ cardId })` → `McpServer` with `get_my_task` (no input) and `set_my_status` (`inputSchema: { status: statusSchema }`) registered, bound via the tools.ts factories. No `outputSchema` declared (kept minimal; structuredContent flows regardless).
+- `src/mcp/server.test.ts` (new): asserts exactly `["get_my_task","set_my_status"]` via an in-process `InMemoryTransport` + `Client.listTools()` round-trip (SDK has no public tool registry — `_registeredTools` is private). No transport/stdio/build.
+
+### Step 13: stdio entry reads + validates CARD_ID
+
+**Status:** ✅ Done
+**Test Result:** red → green
+
+**Files Changed:**
+- `src/mcp/index.ts` (new): `readCardId()` (pure `cardIdSchema.parse(process.env.CARD_ID)`, fails fast) + `main()` (build + connect StdioServerTransport — untested-by-design shim). Auto-run guarded by `process.argv[1] === fileURLToPath(import.meta.url)` so importing the module is side-effect-free.
+- `src/mcp/index.test.ts` (new): 3 cases — valid env returns id; missing throws; malformed throws. Confirmed importing index.ts under vitest does NOT open stdio (guard works).
+
+**Regressions:** none. Full suite 35/35 (was 18 pre-slice). tsc clean.
+
+---
+
+## Slice 2 status — COMPLETE ✅ (MCP server)
+
+- **Steps 1–13:** all ✅ Done. **Quality gates (4):** all PASS. **Validation (independent, all 13 steps):** all VALID, zero defects.
+- **Tests:** 35 passing across 13 files (was 18 pre-slice → +17). `tsc --noEmit` clean.
+- **New module:** `src/mcp/` — `tools.ts` (handlers + factories + appErrorToToolResult), `server.ts` (createMcpServer factory), `index.ts` (stdio entry: readCardId + guarded main). Service layer gained `getTask` + agent-enforced `updateTaskStatus`; `transition-policy` gained `legalFromStatuses` (and dropped the dead `canTransition`).
+- **Two agent tools, stdio, CARD_ID-scoped, no `id` arg:** `get_my_task`, `set_my_status`. Errors returned as `isError:true` with the ERR_* code; agent structurally confined to its own card.
+
+**Discovered fix:** `createTask` insert now uses `{ ignoreUndefined: true }` (an omitted `description` was being persisted as BSON null, diverging from the create-return and the `Card.description?` type).
+
+**Action item for the user (meta-rule: AI must not edit package.json / npm install):** `@modelcontextprotocol/sdk@1.29.0` resolves from node_modules but isn't declared in package.json — run `npm install @modelcontextprotocol/sdk@^1.29.0` for reproducibility.
+
+**Deferred (out of scope, per plan):** `add_repo_to_workspace` tool, HTTP/SSE transport, runner launch/Claude-Code MCP config, `ERR_FORBIDDEN` (unreachable with no-`id` tools).
