@@ -18,11 +18,11 @@ An **autonomous task-orchestration loop** with a phone-first review surface (a 4
 
 | Doc | Covers | Status |
 | --- | ------ | ------ |
-| [data-model.md](./data-model.md) | MongoDB collections, embedding, indexes, atomic patterns | draft |
+| [data-model.md](./data-model.md) | MongoDB collections (incl. implemented `card_events` audit log), embedding, indexes, atomic patterns, parse-on-read layer | draft |
 | [mcp-api-contract.md](./mcp-api-contract.md) | The tool surface: signatures, callers, agent scoping, transitions | draft |
 | [scheduler-runner.md](./scheduler-runner.md) | Reconcile loop, two-axis state, per-card process model, crash recovery | draft |
 | [bootstrap-prompt.md](./bootstrap-prompt.md) | The generic, resume-aware prompt injected into every session | draft |
 | [web-ui.md](./web-ui.md) | Next.js board: RSC reads, Server Action writes, polling, drag, card detail | draft |
-| [next-actions.md](./next-actions.md) | Backlog of ready-to-pick work surfaced during dev: engineering hygiene (Biome + CI), audit/event log, parse-on-read DB wrapper | backlog |
+| [next-actions.md](./next-actions.md) | Engineering hygiene (Biome + CI), audit/event log, parse-on-read DB wrapper — **all implemented in Slice 3**; timeline UI still open | done (1 thread open) |
 
 _(more to come: recurring intake / Notion source)_

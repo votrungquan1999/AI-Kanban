@@ -16,7 +16,9 @@
 
 ## Collections
 
-Three collections: **`cards`**, **`recurring_defs`**, **`sources`**.
+Four collections: **`cards`**, **`card_events`**, **`recurring_defs`**, **`sources`**.
+(`cards` and `card_events` are implemented; `recurring_defs` / `sources` are
+still design-only.)
 
 ### `cards`
 
@@ -64,6 +66,43 @@ Three collections: **`cards`**, **`recurring_defs`**, **`sources`**.
 - `session` is a nested object (null pre-pickup) so the card-move and session-attach updates touch disjoint fields.
 - `number` is a separate human-readable id (see [Human-readable IDs](#human-readable-ids)) — ObjectId is unwieldy in a git branch name.
 
+### `card_events` (implemented)
+
+Append-only audit log of card lifecycle actions — emitted from the `createTask`
+and `updateTaskStatus` choke points. Feeds the (future) phone-review timeline and
+debugging of the autonomous loop.
+
+```js
+{
+  _id: ObjectId,
+  cardId: ObjectId,                 // → cards._id (the audited card)
+  from: "todo" | "in_progress" | "need_review" | "done" | null,  // null for a create
+  to:   "todo" | "in_progress" | "need_review" | "done",         // target / attempted
+  caller: "ui" | "agent" | "scheduler",
+  at: ISODate,
+  outcome: "success" | "failure",
+  error: { code: "string", message: "string" } | null,  // non-null only on failure
+}
+```
+
+**Decisions**
+
+- **Separate collection, not embedded history** — keeps card-move updates touching
+  disjoint fields and lets the log grow unbounded without rewriting the card.
+- **`outcome` + `error` discriminator** — the bare `{from,to,caller,at}` shape can't
+  tell a rejected move from a successful one. `outcome` makes failures
+  distinguishable (it also disentangles a `failure` with `from=null` — a NotFound on
+  a phantom card — from a `success` create with `from=null`); `error` carries the
+  `ErrorCode` + message of a rejected transition for developer investigation. No
+  free-text `reason`/`message` fields this slice.
+- **Emits:** create (`success`, `from=null`, `to=todo`), each successful transition
+  (`success`, `from`=before status), and each rejected transition (`failure`, with
+  the error — both InvalidTransition and NotFound emit).
+- **Read-back** (`listCardEvents`) is chronological, sorted `{ at: 1, _id: 1 }` so
+  same-millisecond events keep a deterministic, insertion-ordered sequence.
+- **Future UI:** grey out / filter `failure` events and surface `error` detail in the
+  card-detail timeline (see [next-actions.md](./next-actions.md)).
+
 ### `recurring_defs`
 
 ```js
@@ -103,6 +142,7 @@ Connection config for external task origins (Notion, repo sets, …).
 | `cards` | `{ status: 1, priority: -1, createdAt: 1 }` | board column reads + pickup ordering (priority, then FIFO) |
 | `cards` | `{ number: 1 }` unique | lookups + branch naming |
 | `cards` | `{ dedupeKey: 1 }` unique **partial** (`status ∈ {todo,in_progress,need_review}`) | Flow 1 dedupe: never two *open* cards for the same source item; closed (done) cards may repeat |
+| `card_events` | `{ cardId: 1, at: 1 }` | chronological read-back of a card's audit timeline |
 | `recurring_defs` | `{ enabled: 1 }` | scheduler scans enabled defs |
 
 ---
@@ -149,6 +189,17 @@ Atomic `$inc` gives gap-free-enough monotonic numbers. (Alternative: drop `numbe
 ## Data-access layer (decided)
 
 **Native `mongodb` driver + Zod.** No ODM. Zod schemas are the single source of truth for each document shape: validate on write, infer TS types on read (`z.infer`). Keeps the access layer thin and explicit, no Mongoose magic.
+
+**Parse-on-read (implemented).** Reads go through a thin wrapper layer in
+[`src/db/find-z.ts`](../../src/db/find-z.ts) — `findOneZ` / `findManyZ` /
+`findOneAndUpdateZ` — that `safeParse`s every returned document against a Zod
+document schema (`cardDocumentSchema`, `cardEventDocumentSchema`). On schema drift
+it logs the Zod issues and throws `AppError(ERR_SCHEMA_DRIFT)` rather than letting a
+malformed doc flow downstream; an absent doc returns `null` unparsed. This caught
+the `ignoreUndefined` class of bug (an omitted `description` persisting as BSON
+`null`) at the boundary. `cards` reads (`getTask`/`listTasks`/`updateTaskStatus`
+read-back) are migrated onto it; the `updateTaskStatus` miss-path pre-image read is
+intentionally left raw so drift can't mask NotFound/InvalidTransition.
 
 ## Open questions
 

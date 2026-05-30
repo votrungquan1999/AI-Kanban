@@ -294,3 +294,175 @@ Scope: stdio transport, one server per session (CARD_ID env-injected). Two agent
 **Action item for the user (meta-rule: AI must not edit package.json / npm install):** `@modelcontextprotocol/sdk@1.29.0` resolves from node_modules but isn't declared in package.json — run `npm install @modelcontextprotocol/sdk@^1.29.0` for reproducibility.
 
 **Deferred (out of scope, per plan):** `add_repo_to_workspace` tool, HTTP/SSE transport, runner launch/Claude-Code MCP config, `ERR_FORBIDDEN` (unreachable with no-`id` tools).
+
+---
+
+# Slice 3: Hygiene + Parse-on-Read + Audit Log
+
+Plan: `implementation-plan-v3.md` (approved). 10 steps + 3 quality checkpoints.
+
+### Step 1: Biome lint/format gate
+
+**Status:** ✅ Done
+**Test Type:** config-only (no test) — AC verified manually
+
+**Files Changed:**
+- `package.json`: `@biomejs/biome@2.4.16` devDep (via `npm install -D`); added `lint` (`biome check .`) + `format` (`biome format --write .`) scripts
+- `biome.json` (new): 2-space/double-quote formatter, v2 `assist.actions.source.organizeImports`, `correctness/noUnusedImports=error`, `vcs.useIgnoreFile`, CSS excluded (`!**/*.css` — Tailwind v4 owns CSS), a11y `noLabelWithoutControl` off for vendored `src/components/ui/**`
+- 20 source files auto-fixed by the first `biome check --write` (import sort + minor format)
+- `.gitignore`: widened scratch-plan ignore to `implementation-plan-*.md`
+
+**Regressions:** none — `npx tsc --noEmit` clean; full suite 35/35 green after auto-fix.
+**Notes:** AC met — `npm run lint` clean on 61 files; a throwaway file with unused imports produced 3 errors (gate bites), then removed. IDE shows an info-only schema/CLI version mismatch (editor extension 2.3.0 vs installed 2.4.16) — harmless.
+
+### Step 2: GitHub Actions CI + .nvmrc (Node 26)
+
+**Status:** ✅ Done
+**Test Type:** config-only (no test) — runs on GitHub, validated locally as far as possible
+
+**Files Changed:**
+- `.nvmrc` (new): `26`
+- `.github/workflows/ci.yml` (new): on push/PR to `main` → checkout → setup-node (`node-version-file: .nvmrc`, npm cache) → `npm ci` → cache `~/.cache/mongodb-binaries` → `npm run lint` → `npx tsc --noEmit` → `npm run test:run`
+
+**Regressions:** none.
+**Notes:** Default branch confirmed `main`; uses `test:run` (not bare `test`, which is watch mode); `tsc` via `npx` (no typecheck script). YAML tab-free + structurally valid; lint still clean with the new files; referenced scripts exist. The actual red/green-on-PR AC can only be observed once pushed to GitHub.
+
+### Quality Checkpoint (after steps 1-2): ✅ PASS
+
+Config-only steps — verified inline (no sub-agent): `npm run lint` clean on 61 files; CI Node pin matches `.nvmrc` (26); Biome does not rewrite local export statements (no `export {A,B}`-convention regression). Substantive quality-gate sub-agents reserved for the code steps (3–6, 7–10).
+
+### Step 3: findOneZ — parsed / null / log+throw on drift
+
+**Status:** ✅ Done
+**Test Result:** red → green (3 cases, one at a time)
+**Test Type:** TDD (unit, useTestMongo)
+
+**Files Changed:**
+- `src/cards/errors.ts`: + `ErrorCode.SchemaDrift = "ERR_SCHEMA_DRIFT"`
+- `src/cards/card.document.schema.ts` (new): `cardDocumentSchema` mirroring `CardDocument` — own ObjectId-based origin union (NOT reusing client `originSchema`), `description` `.optional()`, the 6 always-null fields `.nullable()`, `z.instanceof(ObjectId)` / `z.date()` (no coercion)
+- `src/db/find-z.ts` (new): shared `parseOrThrow(schema, doc)` (safeParse → on failure `console.error` the Zod issues + throw `AppError(SchemaDrift)`) and `findOneZ` (null doc → null, else parseOrThrow)
+- `src/db/find-z.test.ts` (new): 3 cases — valid→parsed (BSON types intact), absent→null, malformed (title number)→logs + throws SchemaDrift (asserted via `vi.spyOn(console,"error")` + `rejects.toMatchObject`)
+
+**Regressions:** none — full suite 38/38 (was 35), `tsc --noEmit` clean, `biome check .` clean on 64 files.
+**Notes:** `schema: ZodType<T>` generic type-checks against `Collection<CardDocument>`. `console.error` chosen as the log mechanism (no logger exists; adding one is out of scope). Helper `parseOrThrow` is the reuse seam for Steps 4–5.
+
+### Step 4: findManyZ — array / empty / sort / log+throw on any drift
+
+**Status:** ✅ Done
+**Test Result:** case 1 red → green; cases 2 & 4 covered by impl + shared parseOrThrow; case 3 (sort) surfaced + fixed a test-isolation bug → green
+**Test Type:** TDD (unit, useTestMongo)
+
+**Files Changed:**
+- `src/db/find-z.ts`: + `findManyZ(collection, filter, schema, options?)` → `find(filter, options).toArray()` then `.map(parseOrThrow)`; imported `FindOptions`
+- `src/db/find-z.test.ts`: 4 findManyZ cases (parsed array, empty, sort-forwarding, any-drift throws) + a `beforeEach` collection cleanup
+
+**Regressions:** none — find-z 7/7, `tsc --noEmit` clean.
+**Notes:** The sort test caught a real Reliability bug — `useTestMongo` doesn't reset between `it`s, so case 1's inserts leaked into the read-all sort test (`[3,2,1,0,0]`). Fixed with a `beforeEach` `deleteMany({})` in the findManyZ describe (each test owns its state). `findManyZ` forwards `FindOptions` so Step 6 (`listTasks` order) and Step 10 (`at` sort) are unblocked. One drifted doc fails the whole read (no partial results), via the same `parseOrThrow`.
+
+### Step 5: findOneAndUpdateZ — after-image / null on miss / log+throw on drift
+
+**Status:** ✅ Done
+**Test Result:** case 1 red → green; cases 2 (miss) & 3 (drift) covered by impl + shared parseOrThrow
+**Test Type:** TDD (unit, useTestMongo)
+
+**Files Changed:**
+- `src/db/find-z.ts`: + `findOneAndUpdateZ(collection, filter, update: UpdateFilter<T> | Document[], schema, options?)` → forwards options (incl. `returnDocument:"after"`), null-guards the miss, then `parseOrThrow`; imported `FindOneAndUpdateOptions`, `UpdateFilter`
+- `src/db/find-z.test.ts`: 3 cases (after-image returned, null on miss, drifted after-image throws) + `beforeEach` cleanup
+
+**Regressions:** none — full suite 45/45 (was 38), `tsc --noEmit` clean, `biome check .` clean.
+**Notes:** `update` typed `UpdateFilter<T> | Document[]` so Step 6's aggregation-pipeline `updateTaskStatus` update is accepted. Driver 7.2.0 returns the doc directly (no `{value}` wrapper). Case 1 asserts the AFTER title, proving options (`returnDocument:"after"`) are forwarded — without forwarding it returns the before-image and reds.
+
+### Step 6: Migrate getTask / listTasks / updateTaskStatus read-back onto *Z wrappers
+
+**Status:** ✅ Done
+**Test Result:** no new tests (migration) — existing card.service suite is the regression gate, 13/13 green
+**Test Type:** migration
+
+**Files Changed:**
+- `src/cards/card.service.ts`: `getTask` → `findOneZ`; `listTasks` → `findManyZ(..., { sort: { priority:-1, createdAt:1 } })`; `updateTaskStatus` read-back → `findOneAndUpdateZ(..., cardDocumentSchema, { returnDocument:"after" })`. Miss-path `findOne({_id})` left RAW (avoids masking InvalidTransition as SchemaDrift). Imported `findOneZ`/`findManyZ`/`findOneAndUpdateZ` + `cardDocumentSchema`.
+
+**Regressions:** none — full suite 45/45, `tsc --noEmit` clean, `biome check .` clean.
+**Notes:** Confirmed `cardDocumentSchema` accepts every shape `createTask` produces (description omitted → `.optional()` holds; all 6 always-null fields present as `null`). `card.service.ts` is 214 lines (< 300). Reads now parse-on-read; drift surfaces as a logged SchemaDrift AppError instead of silently flowing into the mapper.
+
+### Quality Checkpoint (after steps 3-6): ✅ PASS
+
+Sub-agent review of the parse-on-read wrapper + migration. Verdict **pass**, zero issues/fixes. Confirmed: parse failure logs (`console.error`) + throws `AppError(SchemaDrift)`, never returns raw; null/miss returns null without parsing; `findManyZ` fails whole read on any drift; `cardDocumentSchema` uses its own ObjectId origin union; description `.optional()`, 6 fields `.nullable()`, no coercion; miss-path findOne correctly left raw. 4 Pillars: all strong. `npm run lint` + `npx tsc --noEmit` + 45 tests all green; all files < 300 lines.
+
+### Step 7: Creating a card writes one success event (from=null, to=todo)
+
+**Status:** ✅ Done
+**Test Result:** red (0 events) → green
+**Test Type:** TDD (integration, useTestMongo)
+
+**Files Changed:**
+- `src/cards/card-event.type.ts` (new): `EventOutcome` enum (success/failure), `CardEventError`, `CardEventDocument` ({_id, cardId, from: Status|null, to, caller, at, outcome, error})
+- `src/cards/card-event.service.ts` (new): `emitCardEvent(db, event)` — stamps `_id` + `at`, inserts into card_events
+- `src/db/collections.ts`: + `cardEventsCollection(db)` accessor
+- `src/db/indexes.ts`: + `{ cardId: 1, at: 1 }` index on card_events in bootstrapIndexes
+- `src/cards/card.service.ts`: `createTask` emits a create event after a successful insert (from=null, to=Todo, caller=Ui, outcome=Success, error=null) using `doc._id`
+- `src/cards/card.service.test.ts`: + "card events — create" describe (1 test)
+
+**Regressions:** none — full suite 46/46, `tsc --noEmit` clean, `biome check .` clean.
+**Notes:** `createTask` takes NO new caller param — all creation is UI today, so the create event hardcodes `Caller.Ui` (avoids an unused-future param per scope rule). `cardEventDocumentSchema` deferred to Step 10 (where findManyZ consumes it); Step 7's test reads back via the raw typed accessor.
+
+### Step 8: A successful transition writes one success event carrying caller and from→to
+
+**Status:** ✅ Done
+**Test Result:** red (no transition event) → green
+**Test Type:** TDD (integration, useTestMongo)
+
+**Files Changed:**
+- `src/cards/card.service.ts`: `updateTaskStatus` now reads the pre-image ONCE up front (raw findOne) — reused for both the audit `from` and the miss-path NotFound/InvalidTransition disambiguation (replacing the old on-miss findOne). On success it emits a `success` event (from=preImage.status, to=status, resolved caller, error=null) before returning.
+- `src/cards/card.service.test.ts`: + "card events — transition" describe (1 success-transition test)
+
+**Regressions:** none — full suite 47/47, all 6 prior updateTaskStatus tests (incl. NotFound + InvalidTransition) still green, `tsc --noEmit` clean, `biome check .` clean.
+**Notes:** `card.service.ts` now 239 lines (< 300). Non-atomic window (pre-read → conditional update) acknowledged — acceptable for an audit trail. `at` uses `new Date()` in app code (the Date.now meta-rule applies to workflow scripts, not app code). The single up-front read avoids the redundant query the old miss-path used.
+
+### Step 9: A rejected transition writes one failure event with the error code/message
+
+**Status:** ✅ Done
+**Test Result:** red (no failure event) → green (2 cases: illegal transition + missing card)
+**Test Type:** TDD (integration, useTestMongo)
+
+**Files Changed:**
+- `src/cards/card.service.ts`: the `updateTaskStatus` miss path now builds the AppError (InvalidTransition if pre-image exists, else NotFound), emits ONE `failure` event (from=preImage?.status ?? null, to=status, caller, error={code,message}), then throws. Single emit + ternary keeps it DRY (no premature helper for 2 occurrences).
+- `src/cards/card.service.test.ts`: + "card events — failure" describe (2 tests: illegal todo→done by agent → failure event with ERR_INVALID_TRANSITION + from=todo; missing card → failure event with ERR_NOT_FOUND + from=null)
+
+**Regressions:** none — full suite 49/49, all prior throw-path tests still green, `tsc --noEmit` clean, `biome check .` clean.
+**Notes:** `card.service.ts` 250 lines (< 300). The `outcome` discriminator resolves the from=null ambiguity (a NotFound failure with from=null vs a create success with from=null are now distinguishable). Emit is a plain `await` before the throw (no defensive try/finally). NotFound now DOES emit (per the user's "log detailed errors for dev investigation" decision) — stored under the requested-but-phantom cardId.
+
+### Step 10: Events for a card are read back in chronological order
+
+**Status:** ✅ Done
+**Test Result:** red (not implemented) → green
+**Test Type:** TDD (integration, useTestMongo)
+
+**Files Changed:**
+- `src/cards/card.document.schema.ts`: + `cardEventDocumentSchema` (mirrors CardEventDocument — ObjectId/Date no coercion, from `.nullable()`, error object `.nullable()`)
+- `src/cards/card-event.service.ts`: + `listCardEvents(cardId)` → `findManyZ(cardEventsCollection, { cardId: new ObjectId(cardId) }, cardEventDocumentSchema, { sort: { at: 1, _id: 1 } })`
+- `src/cards/card.service.test.ts`: + "card events — chronological read-back" describe (1 test: create + 3 transitions → 4 events oldest-first)
+
+**Regressions:** none — full suite 50/50, `tsc --noEmit` clean, `biome check .` clean.
+**Notes:** Sort key `{ at: 1, _id: 1 }` — ObjectId is monotonic within a process, so same-millisecond events keep a deterministic insertion order (avoids the flaky sub-ms tie the investigation flagged). Read converts the hex `cardId` to ObjectId (events store ObjectId). The read-back validates each event through `cardEventDocumentSchema` (parse-on-read). Sizes: card-event.service 59, card.document.schema 70, card.service 250, find-z 95 — all < 300.
+
+### Quality Checkpoint (after steps 7-10): ✅ PASS
+
+Sub-agent review of the audit/event log. Verdict **pass**. Verified: event carries exactly {cardId, from, to, caller, at, outcome, error} (no reason/message); create emits success/from=null/to=todo/caller=ui AFTER the insert try-catch (dup-key → no create event); success transition from=preImage.status; rejected transition emits failure with AppError code+message (both InvalidTransition and NotFound; NotFound from=null); pre-image read exactly once and reused; emit is plain await before throw (no try/finally); `at` via new Date(); read sorts {at:1,_id:1}. 4 Pillars all satisfied.
+**Fix applied:** card.service.test.ts had grown to 380 lines (over the 300 rule) — split the 4 event describes into a new `src/cards/card-event.service.test.ts` (157 lines); card.service.test.ts now 231. No behavior changed. lint (67 files) + tsc + 50 tests all green.
+
+---
+
+## Validation (Phase 5) — independent, all steps VALID ✅
+
+Two parallel validators independently re-derived each step's AC against the code + real test runs.
+- **Parse-on-read (steps 3–6): all VALID.** No read path missed (only intentional raw reads: the updateTaskStatus pre-image + counters.ts, both out of scope); no silent-pass drift path; schema matches CardDocument field-for-field; ZodType<T> sound, no casts.
+- **Audit log (steps 7–10): all VALID.** Correct payloads; create emits only after a successful insert; single reused pre-image; failure emits before throw; read sorts {at:1,_id:1}; event schema carries ONLY the agreed fields (no reason/message); all files < 300.
+- **One caveat closed:** validators flagged that "a duplicate create leaves no event" was correct-by-construction but untested. Added that hardening test (`card-event.service.test.ts`) + a `beforeEach` cleanup to keep the count-based assertion isolated.
+
+## Slice 3 status — COMPLETE ✅ (Hygiene + Parse-on-Read + Audit Log)
+
+- **Steps 1–10:** all ✅ Done. **Quality gates (2):** PASS. **Validation:** all VALID.
+- **Tests:** 51 passing across 15 files (was 35 → +16). `tsc --noEmit` clean. `biome check .` clean on 67 files. All files < 300 lines.
+- **Item 1 (hygiene):** Biome 2.4.16 (`biome.json`, lint/format scripts) + GitHub Actions CI (`.github/workflows/ci.yml`, `.nvmrc`=26).
+- **Item 3 (parse-on-read):** `src/db/find-z.ts` (`findOneZ`/`findManyZ`/`findOneAndUpdateZ` + `parseOrThrow`), `cardDocumentSchema`, `ErrorCode.SchemaDrift`; getTask/listTasks/updateTaskStatus read-back migrated.
+- **Item 2 (audit log):** `card_events` collection + accessor + `{cardId,at}` index; `CardEventDocument`/`EventOutcome`; `card-event.service.ts` (`emitCardEvent`/`listCardEvents`); create + success-transition + failure events with `outcome` + `error` discriminator; chronological read-back.
