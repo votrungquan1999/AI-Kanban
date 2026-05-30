@@ -1,8 +1,14 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { createTask, listTasks, updateTaskStatus } from "@/cards/card.service";
+import {
+  createTask,
+  getTask,
+  listTasks,
+  updateTaskStatus,
+} from "@/cards/card.service";
 import { OriginType, Status } from "@/cards/card.type";
 import { ErrorCode } from "@/cards/errors";
+import { Caller } from "@/cards/transition-policy";
 import { bootstrapIndexes } from "@/db/indexes";
 import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
@@ -60,6 +66,32 @@ describe("createTask", () => {
     expect(first.id).not.toBe(second.id);
     expect(first.status).toBe(Status.Todo);
     expect(second.status).toBe(Status.Todo);
+  });
+});
+
+describe("getTask", () => {
+  useTestMongo();
+
+  it("returns the client-facing card for an existing id", async () => {
+    // Given an existing card
+    const created = await createTask({
+      title: "read me",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When it is fetched by id
+    const fetched = await getTask(created.id);
+
+    // Then the clean client Card is returned (no raw _id leak)
+    expect(fetched).toEqual(created);
+    expect(Object.keys(fetched)).not.toContain("_id");
+  });
+
+  it("throws ERR_NOT_FOUND for an unknown id", async () => {
+    // Given a well-formed but unused id, When fetched, Then it is not found
+    await expect(
+      getTask(new ObjectId().toHexString()),
+    ).rejects.toMatchObject({ code: ErrorCode.NotFound });
   });
 });
 
@@ -129,9 +161,71 @@ describe("updateTaskStatus", () => {
     expect(done.pickedAt).toBe(inProgress.pickedAt);
   });
 
+  it("lets the UI jump straight todo -> done (override, no edge constraint)", async () => {
+    // Given a fresh todo card
+    const card = await createTask({
+      title: "override me",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When the UI moves it directly to done (an edge the agent may NOT take)
+    const done = await updateTaskStatus(card.id, Status.Done);
+
+    // Then it succeeds and stamps finishedAt — UI bypasses the from-set filter
+    expect(done.status).toBe(Status.Done);
+    expect(done.finishedAt).not.toBeNull();
+  });
+
+  it("lets the agent move along a legal edge and stamps lifecycle fields", async () => {
+    // Given a card the UI has moved into in_progress (a legal agent `from`)
+    const card = await createTask({
+      title: "agent finishes",
+      origin: { type: OriginType.Manual },
+    });
+    const inProgress = await updateTaskStatus(card.id, Status.InProgress);
+    expect(inProgress.pickedAt).not.toBeNull();
+
+    // When the agent moves it along the legal in_progress -> done edge
+    const done = await updateTaskStatus(card.id, Status.Done, {
+      caller: Caller.Agent,
+    });
+
+    // Then it moves, stamps finishedAt, and preserves the original pickedAt
+    expect(done.status).toBe(Status.Done);
+    expect(done.finishedAt).not.toBeNull();
+    expect(done.pickedAt).toBe(inProgress.pickedAt);
+  });
+
+  it("rejects an agent move from an illegal source status", async () => {
+    // Given a card still in todo (not a legal agent source for done)
+    const card = await createTask({
+      title: "agent jumps the queue",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When the agent tries the illegal todo -> done edge, Then it is rejected
+    await expect(
+      updateTaskStatus(card.id, Status.Done, { caller: Caller.Agent }),
+    ).rejects.toMatchObject({ code: ErrorCode.InvalidTransition });
+
+    // And the card is unchanged (still todo)
+    const after = await getTask(card.id);
+    expect(after.status).toBe(Status.Todo);
+  });
+
   it("throws ERR_NOT_FOUND for an unknown id", async () => {
     await expect(
       updateTaskStatus(new ObjectId().toHexString(), Status.Done),
+    ).rejects.toMatchObject({ code: ErrorCode.NotFound });
+  });
+
+  it("reports an agent move on a missing card as not-found, not invalid-transition", async () => {
+    // Given a well-formed but unused id, When the agent moves it,
+    // Then the miss disambiguates to NotFound (no card), not InvalidTransition.
+    await expect(
+      updateTaskStatus(new ObjectId().toHexString(), Status.Done, {
+        caller: Caller.Agent,
+      }),
     ).rejects.toMatchObject({ code: ErrorCode.NotFound });
   });
 });

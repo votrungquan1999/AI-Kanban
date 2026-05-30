@@ -1,3 +1,5 @@
+import { Status } from "@/cards/card.type";
+
 /** Who is requesting a card status change. */
 export enum Caller {
   Ui = "ui",
@@ -6,12 +8,35 @@ export enum Caller {
 }
 
 /**
- * Whether `caller` may change a card's status. The human UI may move a card to
- * any column (the drag/override escape hatch); programmatic callers
- * (scheduler/agent) are constrained in a later slice — this is the seam.
- * @param caller - The requesting caller.
- * @returns True if the status change is permitted.
+ * The agent's legal `(from → to)` lifecycle edges. The human UI is
+ * unconstrained (any → any); the scheduler has no agent-exposed edge in this
+ * slice. Used to enforce moves atomically (the from-set feeds a `$in` filter).
  */
-export function canTransition(caller: Caller): boolean {
-  return caller === Caller.Ui;
+const AGENT_EDGES: ReadonlyArray<readonly [Status, Status]> = [
+  [Status.InProgress, Status.NeedReview],
+  [Status.InProgress, Status.Done],
+  [Status.NeedReview, Status.InProgress],
+  [Status.NeedReview, Status.Done],
+];
+
+/**
+ * The source statuses from which `caller` may legally move a card to `to`.
+ * UI → every status (any → any). Agent → only the from-statuses of its legal
+ * edges into `to` (possibly empty, e.g. `to = todo`). Any other caller → none.
+ * @param caller - The requesting caller.
+ * @param to - The target status.
+ * @returns The legal source statuses (empty if the move is not permitted).
+ */
+export function legalFromStatuses(caller: Caller, to: Status): Status[] {
+  if (caller === Caller.Ui) {
+    return Object.values(Status);
+  }
+
+  if (caller === Caller.Agent) {
+    return AGENT_EDGES.filter(([, target]) => target === to).map(
+      ([from]) => from,
+    );
+  }
+
+  return [];
 }
