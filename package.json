@@ -13,6 +13,7 @@
     "start": "next start",
     "test": "vitest",
     "test:run": "vitest run",
+    "dev:e2e": "MONGODB_DB=ai_kanban_e2e next dev -p 3001",
     "test:e2e": "playwright test"
   },
   "repository": {
