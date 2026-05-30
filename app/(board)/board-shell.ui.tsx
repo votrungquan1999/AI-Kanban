@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -20,7 +21,9 @@ export function BoardShell({ title, addTaskHref, children }: BoardShellProps) {
     <main className="grid min-h-screen content-start bg-background">
       <header className="grid grid-cols-[1fr_auto] items-center gap-2 px-4 pt-4">
         <h1 className="text-lg font-bold text-foreground">{title}</h1>
-        <Button render={<a href={addTaskHref}>Add task</a>} />
+        <Button nativeButton={false} render={<Link href={addTaskHref} />}>
+          Add task
+        </Button>
       </header>
       {children}
     </main>
