@@ -55,6 +55,7 @@ export function Board({ columns, moveAction }: BoardProps) {
             key={column.status}
             status={column.status}
             title={column.title}
+            count={column.cards.length}
           >
             {column.cards.map((card) => (
               <DraggableCard key={card.id} card={card} />

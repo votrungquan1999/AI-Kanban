@@ -19,7 +19,7 @@ interface BoardShellProps {
 export function BoardShell({ title, addTaskHref, children }: BoardShellProps) {
   return (
     <main className="grid min-h-screen content-start bg-background">
-      <header className="grid grid-cols-[1fr_auto] items-center gap-2 px-4 pt-4">
+      <header className="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-border px-4 py-3">
         <h1 className="text-lg font-bold text-foreground">{title}</h1>
         <Button nativeButton={false} render={<Link href={addTaskHref} />}>
           Add task
