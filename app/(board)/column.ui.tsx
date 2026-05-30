@@ -14,9 +14,9 @@ interface ColumnProps {
  */
 export function Column({ title, children }: ColumnProps) {
   return (
-    <section className="flex w-72 flex-shrink-0 flex-col gap-2">
-      <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
-      <div className="flex min-h-8 flex-col gap-2">{children}</div>
+    <section className="grid w-72 shrink-0 content-start gap-2">
+      <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+      <div className="grid min-h-8 content-start gap-2">{children}</div>
     </section>
   );
 }

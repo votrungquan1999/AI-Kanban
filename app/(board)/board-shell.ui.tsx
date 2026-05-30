@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 
 interface BoardShellProps {
   title: string;
@@ -16,15 +17,10 @@ interface BoardShellProps {
  */
 export function BoardShell({ title, addTaskHref, children }: BoardShellProps) {
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="flex items-center justify-between px-4 pt-4">
-        <h1 className="text-lg font-bold text-gray-900">{title}</h1>
-        <a
-          href={addTaskHref}
-          className="rounded bg-gray-900 px-3 py-1 text-sm text-white"
-        >
-          Add task
-        </a>
+    <main className="grid min-h-screen content-start bg-background">
+      <header className="grid grid-cols-[1fr_auto] items-center gap-2 px-4 pt-4">
+        <h1 className="text-lg font-bold text-foreground">{title}</h1>
+        <Button render={<a href={addTaskHref}>Add task</a>} />
       </header>
       {children}
     </main>

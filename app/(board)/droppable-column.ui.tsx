@@ -18,11 +18,15 @@ interface DroppableColumnProps {
  * @param title - Column heading.
  * @param children - The column's draggable cards.
  */
-export function DroppableColumn({ status, title, children }: DroppableColumnProps) {
+export function DroppableColumn({
+  status,
+  title,
+  children,
+}: DroppableColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div ref={setNodeRef} className={isOver ? "rounded-md bg-gray-100" : undefined}>
+    <div ref={setNodeRef} className={isOver ? "rounded-md bg-muted" : undefined}>
       <Column title={title}>{children}</Column>
     </div>
   );

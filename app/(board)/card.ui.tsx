@@ -1,17 +1,22 @@
 "use client";
 
-import type { Card } from "@/cards/card.type";
+import type { Card as CardData } from "@/cards/card.type";
+import { Card } from "@/components/ui/card";
 
 /**
  * Renders a single card tile showing its number, title, and priority.
  * @param card - The card to display.
  */
-export function CardTile({ card }: { card: Card }) {
+export function CardTile({ card }: { card: CardData }) {
   return (
-    <article className="rounded-md border border-gray-200 bg-white p-3 shadow-sm">
-      <div className="text-xs text-gray-400">#{card.number}</div>
-      <div className="text-sm font-medium text-gray-900">{card.title}</div>
-      <div className="text-xs text-gray-500">priority {card.priority}</div>
-    </article>
+    <Card className="grid gap-1 p-3">
+      <div className="text-xs text-muted-foreground">#{card.number}</div>
+      <div className="text-sm font-medium text-card-foreground">
+        {card.title}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        priority {card.priority}
+      </div>
+    </Card>
   );
 }

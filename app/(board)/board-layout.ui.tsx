@@ -7,5 +7,9 @@ import type { ReactNode } from "react";
  * @param children - The column elements.
  */
 export function BoardLayout({ children }: { children: ReactNode }) {
-  return <div className="flex gap-4 overflow-x-auto p-4">{children}</div>;
+  return (
+    <div className="grid grid-flow-col auto-cols-max gap-4 overflow-x-auto p-4">
+      {children}
+    </div>
+  );
 }

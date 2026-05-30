@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { AddTaskDialog } from "./add-task-dialog";
 import type { AddTaskState } from "./add-task.type";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+}));
+
 describe("AddTaskDialog", () => {
   it("renders nothing when closed", () => {
     const action = vi.fn(async (): Promise<AddTaskState> => ({}));
