@@ -21,6 +21,11 @@ npm-debug.log*
 .next/
 next-env.d.ts
 
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 # orchestrated-feature-dev scratch state (IMPLEMENTATION_PROGRESS.md is kept tracked)
 RESEARCH_OUTPUT.md
 RESEARCH_FOLLOWUP_*.md
