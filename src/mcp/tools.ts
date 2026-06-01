@@ -11,7 +11,7 @@ import { Caller } from "@/cards/transition-policy";
  * @param card - The card to return to the agent.
  * @returns A success tool result.
  */
-function toCardResult(card: Card): CallToolResult {
+export function toCardResult(card: Card): CallToolResult {
   return {
     structuredContent: { ...card },
     content: [{ type: "text", text: JSON.stringify(card) }],
