@@ -16,6 +16,8 @@ function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
     updatedAt: "2026-01-01T00:00:00.000Z",
     pickedAt: null,
     finishedAt: null,
+    workspacePath: null,
+    repos: [],
     ...partial,
   };
 }
