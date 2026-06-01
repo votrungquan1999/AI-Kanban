@@ -29,6 +29,13 @@ const cardErrorInfoSchema = z.object({
   at: z.date(),
 });
 
+/** One workspace repo entry as stored in the DB (pure strings). */
+const repoEntrySchema = z.object({
+  repo: z.string(),
+  branch: z.string(),
+  worktreePath: z.string(),
+});
+
 /**
  * Validates a raw `cards` document read out of MongoDB. Mirrors the
  * `CardDocument` interface exactly: `ObjectId`/`Date` stay as BSON instances
@@ -55,6 +62,8 @@ export const cardDocumentSchema = z.object({
   updatedAt: z.date(),
   pickedAt: z.date().nullable(),
   finishedAt: z.date().nullable(),
+  workspacePath: z.string().nullable(),
+  repos: z.array(repoEntrySchema),
 });
 
 /** Validates a raw `card_events` audit document read out of MongoDB. */

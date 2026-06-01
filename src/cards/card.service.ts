@@ -86,6 +86,8 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
     updatedAt: now,
     pickedAt: null,
     finishedAt: null,
+    workspacePath: null,
+    repos: [],
   };
 
   try {

@@ -6,9 +6,10 @@ import {
   listTasks,
   updateTaskStatus,
 } from "@/cards/card.service";
-import { OriginType, Status } from "@/cards/card.type";
+import { OriginType, RunState, Status } from "@/cards/card.type";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
+import { cardsCollection } from "@/db/collections";
 import { bootstrapIndexes } from "@/db/indexes";
 import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
@@ -66,6 +67,62 @@ describe("createTask", () => {
     expect(first.id).not.toBe(second.id);
     expect(first.status).toBe(Status.Todo);
     expect(second.status).toBe(Status.Todo);
+  });
+});
+
+describe("card workspace bookkeeping", () => {
+  useTestMongo();
+
+  it("creates a card with empty workspace bookkeeping that survives a read", async () => {
+    // Given a clean board
+    // When a card is created and read back from storage
+    const created = await createTask({
+      title: "workspace card",
+      origin: { type: OriginType.Manual },
+    });
+    const fetched = await getTask(created.id);
+
+    // Then both the created and re-read client cards expose empty workspace
+    // bookkeeping (no path, no repos) — proving the round-trip carries the new
+    // fields without a schema-drift rejection
+    expect(created.workspacePath).toBeNull();
+    expect(created.repos).toEqual([]);
+    expect(fetched.workspacePath).toBeNull();
+    expect(fetched.repos).toEqual([]);
+  });
+
+  it("rejects a stored card missing the workspace bookkeeping as schema drift", async () => {
+    // Given a card stored in the old shape (no workspacePath/repos), inserted
+    // raw via the driver to bypass createTask's new field initializers
+    const db = await getDb();
+    const _id = new ObjectId();
+    const now = new Date();
+    const legacyDoc = {
+      _id,
+      number: 1,
+      title: "legacy card",
+      status: Status.Todo,
+      priority: 0,
+      origin: { type: OriginType.Manual },
+      dedupeKey: null,
+      runState: RunState.Idle,
+      process: null,
+      attempts: 0,
+      restarts: 0,
+      nextStartAfter: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      pickedAt: null,
+      finishedAt: null,
+    };
+    await cardsCollection(db).insertOne(legacyDoc as never);
+
+    // When it is read back, Then the parse-on-read rejects it as schema drift —
+    // proving the new bookkeeping is required, not silently defaulted
+    await expect(getTask(_id.toHexString())).rejects.toMatchObject({
+      code: ErrorCode.SchemaDrift,
+    });
   });
 });
 

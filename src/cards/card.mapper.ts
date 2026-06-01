@@ -32,5 +32,7 @@ export function toClientCard(doc: CardDocument): Card {
     updatedAt: doc.updatedAt.toISOString(),
     pickedAt: doc.pickedAt ? doc.pickedAt.toISOString() : null,
     finishedAt: doc.finishedAt ? doc.finishedAt.toISOString() : null,
+    workspacePath: doc.workspacePath,
+    repos: doc.repos,
   };
 }

@@ -30,6 +30,8 @@ function makeCardDocument(overrides: Partial<CardDocument> = {}): CardDocument {
     updatedAt: now,
     pickedAt: null,
     finishedAt: null,
+    workspacePath: null,
+    repos: [],
     ...overrides,
   };
 }

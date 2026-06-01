@@ -46,6 +46,17 @@ export interface CardErrorInfo {
 }
 
 /**
+ * One repository the agent checked out for a card: the repo it cloned, the
+ * branch it created, and the worktree path on disk. Pure strings, so the stored
+ * and client-facing shapes are identical (no ObjectId/Date conversion).
+ */
+export interface RepoEntry {
+  repo: string;
+  branch: string;
+  worktreePath: string;
+}
+
+/**
  * A card as stored in MongoDB. Runtime fields are set to defaults/null on
  * create; no logic is built around them in this slice.
  */
@@ -68,6 +79,8 @@ export interface CardDocument {
   updatedAt: Date;
   pickedAt: Date | null;
   finishedAt: Date | null;
+  workspacePath: string | null;
+  repos: RepoEntry[];
 }
 
 /** A card as exposed to the client — never expose raw documents. */
@@ -83,4 +96,6 @@ export interface Card {
   updatedAt: string;
   pickedAt: string | null;
   finishedAt: string | null;
+  workspacePath: string | null;
+  repos: RepoEntry[];
 }
