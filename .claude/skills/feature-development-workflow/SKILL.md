@@ -1,11 +1,11 @@
 ---
 name: feature-development-workflow
-description: Guides feature implementation using incremental development with planning, test-driven approach, and progress tracking. Use when implementing features, building functionality, starting new development tasks, or when user says "implement feature", "build this", or "develop this functionality".
+description: Guides feature implementation using incremental development with planning, behavior-driven approach, and progress tracking. Use when implementing features, building functionality, starting new development tasks, or when user says "implement feature", "build this", or "develop this functionality".
 ---
 
 # Feature Development Workflow
 
-This Skill provides a structured approach for implementing features and tasks incrementally with test-driven development and progress tracking.
+This Skill provides a structured approach for implementing features and tasks incrementally with behavior-driven development and progress tracking.
 
 ## Core Principles
 
@@ -126,7 +126,7 @@ Create a file (e.g., `IMPLEMENTATION_PROGRESS.md`) to track completed steps. Add
 
 Follow the guidelines in the 4 Pillars document when defining test scenarios and writing tests.
 
-**Key TDD Principle:** Always write ONE test at a time, see it fail, make it pass, then move to the next test. This ensures you're building incrementally and each test is actually validating behavior.
+**Key BDD Principle:** Always write ONE test at a time, see it fail, make it pass, then move to the next test. This ensures you're building incrementally and each test is actually validating behavior.
 
 ---
 
@@ -195,8 +195,8 @@ Follow the guidelines in the 4 Pillars document when defining test scenarios and
 
 ## Related Skills
 
-- `@tdd-design` - Core TDD loop methodology used during implementation
-- `@bdd-design` - Use BDD for behavior-level acceptance testing
+- `@bdd-design` - Core BDD scenario methodology used during implementation
+- `@tdd-design` - Inner-loop helper for unit/algorithm-level tests within a scenario step
 - `@test-quality-reviewer` - Review test quality during quality checkpoints
 - `@code-refactoring` - Apply refactoring patterns during quality checkpoints
 - `@create-implementation-plan` - Use for more detailed planning with design decisions

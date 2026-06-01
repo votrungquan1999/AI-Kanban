@@ -67,7 +67,7 @@ For complex designs, consider using the `@structured-brainstorming` workflow to 
 
 ### Step 4: Define Observable Behaviors & Test Cases
 
-List the behaviors the system should exhibit, ordered by implementation priority. Each behavior becomes one TDD step — a strictly isolated test-first cycle.
+List the behaviors the system should exhibit, ordered by implementation priority. Each behavior becomes one BDD scenario step — a strictly isolated test-first cycle.
 
 **CRITICAL: ONE TEST AT A TIME**
 Never batch behaviors or write multiple tests at once. Each step must be exactly one behavior, which translates to exactly one test, followed immediately by its implementation.

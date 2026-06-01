@@ -51,9 +51,10 @@ For each task, Claude Code MUST double-check:
 
 ## Test-First Enforcement
 
-- When doing test-first: NEVER write implementation code before running the test.
-- ONE test at a time. Run it. See the result. Then decide whether to implement.
-- The test run is a GATE — skipping it is a rule violation.
+- The test-run GATE applies to BOTH modes: BDD scenarios (outer, behavior-level loop) and TDD (inner, unit/algorithm-level loop). BDD is also test-first — test-first never conflicts with BDD.
+- NEVER write implementation code before running the test.
+- ONE at a time: one scenario (BDD) or one test (TDD). Run it. See the result. Then decide whether to implement.
+- The test run is a GATE — skipping it is a rule violation in either mode.
 
 ## Planning Mode
 

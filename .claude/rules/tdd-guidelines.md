@@ -69,3 +69,15 @@ Continue cycle for each test scenario until all implemented and passing.
 - ❌ Write multiple tests before implementing
 - ❌ Write implementation before tests
 - ❌ Consider test passed when the test not actually run
+
+---
+
+## TDD vs BDD — when to use which
+
+- **BDD = outer loop.** User-facing feature behavior, expressed as scenarios with Given/When/Then. This is the default framing for feature development.
+- **TDD = inner loop.** Internal logic, algorithms, and utilities driven test-first within a single BDD scenario step.
+
+Both share the same discipline:
+
+- **Test-first GATE** — write and run the test before any implementation (BDD is also test-first; the two never conflict).
+- **One at a time** — one scenario (BDD) or one test (TDD), see it fail, make it pass, then move to the next.
