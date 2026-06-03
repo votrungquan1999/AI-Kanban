@@ -2,6 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { type Card, OriginType, Status } from "@/cards/card.type";
+import { ToastProvider } from "@/components/ui/toast";
 import { Board } from "./board";
 import type { BoardColumnView } from "./board.type";
 
@@ -39,7 +40,11 @@ describe("Board", () => {
       },
     ];
 
-    render(<Board columns={columns} moveAction={noopMove} />);
+    render(
+      <ToastProvider>
+        <Board columns={columns} moveAction={noopMove} />
+      </ToastProvider>,
+    );
 
     expect(screen.getByText("Todo")).toBeInTheDocument();
     expect(screen.getByText("In Progress")).toBeInTheDocument();

@@ -7,3 +7,8 @@ export function boardHref(): string {
 export function newTaskHref(): string {
   return "/?new=task";
 }
+
+/** Link that opens a card's detail sheet via URL state. */
+export function cardDetailHref(cardId: string): string {
+  return `/?card=${cardId}`;
+}

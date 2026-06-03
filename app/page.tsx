@@ -1,10 +1,36 @@
-import { listTasks } from "@/cards/card.service";
-import { createTaskAction, moveCard } from "./(board)/actions";
+import { getTask, listTasks } from "@/cards/card.service";
+import type { Card } from "@/cards/card.type";
+import {
+  createTaskAction,
+  deleteTaskAction,
+  moveCard,
+  updateTaskAction,
+} from "./(board)/actions";
 import { AddTaskDialog } from "./(board)/add-task-dialog";
 import { Board } from "./(board)/board";
 import { groupIntoColumns } from "./(board)/board.columns";
 import { BoardShell } from "./(board)/board-shell.ui";
+import { CardDetail } from "./(board)/card-detail.ui";
 import { newTaskHref } from "./(board)/href";
+
+/**
+ * Resolves the `?card=<id>` param into a card. Returns null for an absent,
+ * malformed, or unknown id (getTask throws on those) so a bad URL just shows
+ * the board with no sheet instead of crashing it.
+ * @param cardId - The raw `?card` search param value.
+ */
+async function resolveDetailCard(
+  cardId: string | string[] | undefined,
+): Promise<Card | null> {
+  if (typeof cardId !== "string") {
+    return null;
+  }
+  try {
+    return await getTask(cardId);
+  } catch {
+    return null;
+  }
+}
 
 interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
@@ -19,11 +45,19 @@ export default async function Page({ searchParams }: PageProps) {
   const params = await searchParams;
   const isAddOpen = params.new === "task";
   const cards = await listTasks();
+  const detailCard = await resolveDetailCard(params.card);
 
   return (
     <BoardShell title="AI Kanban" addTaskHref={newTaskHref()}>
       <Board columns={groupIntoColumns(cards)} moveAction={moveCard} />
       <AddTaskDialog open={isAddOpen} action={createTaskAction} />
+      <CardDetail
+        card={detailCard}
+        open={Boolean(detailCard)}
+        moveAction={moveCard}
+        editAction={updateTaskAction}
+        deleteAction={deleteTaskAction}
+      />
     </BoardShell>
   );
 }

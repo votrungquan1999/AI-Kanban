@@ -4,12 +4,22 @@ import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface AddTaskFormProps {
   formAction: (formData: FormData) => void;
   error?: string;
   pending: boolean;
 }
+
+/** The fixed P0–P3 priority levels (P0 = lowest, the default for a new card). */
+const PRIORITY_LEVELS = [0, 1, 2, 3] as const;
 
 /**
  * Presentational add-task form (rendered inside the dialog): a title field,
@@ -24,6 +34,22 @@ export function AddTaskForm({ formAction, error, pending }: AddTaskFormProps) {
       <div className="grid gap-1.5">
         <Label htmlFor="title">Title</Label>
         <Input id="title" name="title" />
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label>Priority</Label>
+        <Select name="priority" defaultValue="0">
+          <SelectTrigger aria-label="Priority" className="w-full">
+            <SelectValue>{(value) => `P${value}`}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {PRIORITY_LEVELS.map((level) => (
+              <SelectItem key={level} value={String(level)}>
+                P{level}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {error ? (

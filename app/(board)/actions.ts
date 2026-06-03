@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createTaskInputSchema } from "@/cards/card.schema";
+import { deleteTask, updateTask } from "@/cards/card.edit.service";
+import {
+  createTaskInputSchema,
+  type UpdateTaskInput,
+} from "@/cards/card.schema";
 import { createTask, updateTaskStatus } from "@/cards/card.service";
 import { OriginType, type Status } from "@/cards/card.type";
 import { Caller } from "@/cards/transition-policy";
@@ -21,9 +25,11 @@ export async function createTaskAction(
   formData: FormData,
 ): Promise<AddTaskState> {
   const rawTitle = formData.get("title");
+  const rawPriority = formData.get("priority");
   const parsed = createTaskInputSchema.safeParse({
     title: typeof rawTitle === "string" ? rawTitle : "",
     origin: { type: OriginType.Manual },
+    priority: typeof rawPriority === "string" ? Number(rawPriority) : undefined,
   });
 
   if (!parsed.success) {
@@ -33,9 +39,35 @@ export async function createTaskAction(
   await createTask({
     title: parsed.data.title,
     origin: { type: OriginType.Manual },
+    priority: parsed.data.priority,
   });
   revalidatePath("/");
   redirect("/");
+}
+
+/**
+ * Server Action: edits a card's core fields (title / description / priority)
+ * and revalidates the board so the open detail sheet re-reads the new values.
+ * Backs the sheet's inline edit form.
+ * @param cardId - The card's hex id.
+ * @param patch - The subset of editable fields to change.
+ */
+export async function updateTaskAction(
+  cardId: string,
+  patch: UpdateTaskInput,
+): Promise<void> {
+  await updateTask(cardId, patch);
+  revalidatePath("/");
+}
+
+/**
+ * Server Action: archives (soft-deletes) a card and revalidates the board so it
+ * drops out of the default view. Backs the sheet's confirm-to-archive control.
+ * @param cardId - The card's hex id.
+ */
+export async function deleteTaskAction(cardId: string): Promise<void> {
+  await deleteTask(cardId);
+  revalidatePath("/");
 }
 
 /**

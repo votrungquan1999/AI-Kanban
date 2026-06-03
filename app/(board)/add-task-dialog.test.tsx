@@ -31,4 +31,20 @@ describe("AddTaskDialog", () => {
       "Title is required",
     );
   });
+
+  it("offers a P0–P3 priority selector defaulting to P0", async () => {
+    const action = vi.fn(async (): Promise<AddTaskState> => ({}));
+
+    render(<AddTaskDialog open action={action} />);
+
+    // The priority selector defaults to P0
+    const priority = await screen.findByRole("combobox", { name: /priority/i });
+    expect(priority).toHaveTextContent("P0");
+
+    // And opening it reveals the full P0–P3 range
+    await userEvent.click(priority);
+    expect(
+      await screen.findByRole("option", { name: "P3" }),
+    ).toBeInTheDocument();
+  });
 });
