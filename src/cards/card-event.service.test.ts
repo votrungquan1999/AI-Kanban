@@ -2,8 +2,13 @@ import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createTask, updateTaskStatus } from "@/cards/card.service";
 import { OriginType, Status } from "@/cards/card.type";
-import { listCardEvents } from "@/cards/card-event.service";
-import { EventOutcome } from "@/cards/card-event.type";
+import { emitFieldEditEvent, listCardEvents } from "@/cards/card-event.service";
+import {
+  CardEventKind,
+  EditableField,
+  EventOutcome,
+  type StatusTransitionEventDocument,
+} from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardEventsCollection } from "@/db/collections";
@@ -88,7 +93,10 @@ describe("card events — transition", () => {
       .find({ cardId: new ObjectId(card.id) })
       .toArray();
     expect(events).toHaveLength(2);
-    const transition = events.find((e) => e.to === Status.InProgress);
+    const transition = events.find(
+      (e) =>
+        e.kind === CardEventKind.StatusTransition && e.to === Status.InProgress,
+    );
     expect(transition).toMatchObject({
       from: Status.Todo,
       to: Status.InProgress,
@@ -154,6 +162,75 @@ describe("card events — failure", () => {
   });
 });
 
+describe("card events — field edits", () => {
+  useTestMongo();
+
+  it("writes and reads back a field-edit event carrying its changed fields", async () => {
+    // Given a created card
+    const db = await getDb();
+    const card = await createTask({
+      title: "Editable",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When a field-edit event is recorded for a title + priority change
+    await emitFieldEditEvent(db, {
+      cardId: new ObjectId(card.id),
+      caller: Caller.Ui,
+      changes: [
+        { field: EditableField.Title, from: "Editable", to: "Edited" },
+        { field: EditableField.Priority, from: "0", to: "2" },
+      ],
+    });
+
+    // Then the timeline read-back includes the field-edit entry with its changes
+    const events = await listCardEvents(card.id);
+    const edit = events.find((e) => e.kind === CardEventKind.FieldEdit);
+    expect(edit).toMatchObject({
+      kind: CardEventKind.FieldEdit,
+      caller: Caller.Ui,
+      outcome: EventOutcome.Success,
+      error: null,
+      changes: [
+        { field: EditableField.Title, from: "Editable", to: "Edited" },
+        { field: EditableField.Priority, from: "0", to: "2" },
+      ],
+    });
+  });
+});
+
+describe("card events — legacy rows (no migration)", () => {
+  useTestMongo();
+
+  it("reads a legacy status row that predates the kind discriminator as a status transition", async () => {
+    // Given a legacy card_events row written before the `kind` discriminator
+    const db = await getDb();
+    const cardId = new ObjectId();
+    await db.collection("card_events").insertOne({
+      cardId,
+      from: Status.Todo,
+      to: Status.InProgress,
+      caller: Caller.Ui,
+      at: new Date(),
+      outcome: EventOutcome.Success,
+      error: null,
+    });
+
+    // When reading that card's timeline back
+    const events = await listCardEvents(cardId.toHexString());
+
+    // Then the row parses with no migration, coalesced to a status transition
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      kind: CardEventKind.StatusTransition,
+      from: Status.Todo,
+      to: Status.InProgress,
+      caller: Caller.Ui,
+      outcome: EventOutcome.Success,
+    });
+  });
+});
+
 describe("card events — chronological read-back", () => {
   useTestMongo();
 
@@ -174,7 +251,11 @@ describe("card events — chronological read-back", () => {
 
     // Then all four events come back in chronological from→to order
     expect(events).toHaveLength(4);
-    expect(events.map((e) => [e.from, e.to])).toEqual([
+    const transitions = events.filter(
+      (e): e is StatusTransitionEventDocument =>
+        e.kind === CardEventKind.StatusTransition,
+    );
+    expect(transitions.map((e) => [e.from, e.to])).toEqual([
       [null, Status.Todo],
       [Status.Todo, Status.InProgress],
       [Status.InProgress, Status.NeedReview],

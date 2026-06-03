@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createTask, updateTaskStatus } from "@/cards/card.service";
 import { OriginType, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
-import { EventOutcome } from "@/cards/card-event.type";
+import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
 import {
   createClaimCard,
@@ -106,7 +106,10 @@ describe("set_status handler", () => {
     // And the change is recorded in the audit log
     const events = await listCardEvents(created.id);
     const moved = events.find(
-      (e) => e.to === Status.NeedReview && e.outcome === EventOutcome.Success,
+      (e) =>
+        e.kind === CardEventKind.StatusTransition &&
+        e.to === Status.NeedReview &&
+        e.outcome === EventOutcome.Success,
     );
     expect(moved).toBeDefined();
   });

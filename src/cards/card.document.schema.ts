@@ -1,7 +1,11 @@
 import { ObjectId } from "mongodb";
 import { z } from "zod";
 import { OriginType, RunState, Status } from "@/cards/card.type";
-import { EventOutcome } from "@/cards/card-event.type";
+import {
+  CardEventKind,
+  EditableField,
+  EventOutcome,
+} from "@/cards/card-event.type";
 import { Caller } from "@/cards/transition-policy";
 
 /**
@@ -66,14 +70,51 @@ export const cardDocumentSchema = z.object({
   repos: z.array(repoEntrySchema),
 });
 
-/** Validates a raw `card_events` audit document read out of MongoDB. */
-export const cardEventDocumentSchema = z.object({
+/** Fields shared by every `card_events` audit document. */
+const baseEventSchema = z.object({
   _id: z.instanceof(ObjectId),
   cardId: z.instanceof(ObjectId),
-  from: z.enum(Status).nullable(),
-  to: z.enum(Status),
   caller: z.enum(Caller),
   at: z.date(),
   outcome: z.enum(EventOutcome),
   error: z.object({ code: z.string(), message: z.string() }).nullable(),
 });
+
+/** A status-change audit row (create / move). `from` is null for a create. */
+const statusTransitionEventSchema = baseEventSchema.extend({
+  kind: z.literal(CardEventKind.StatusTransition),
+  from: z.enum(Status).nullable(),
+  to: z.enum(Status),
+});
+
+/** One audited field change with its stringified old/new values. */
+const fieldChangeSchema = z.object({
+  field: z.enum(EditableField),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+});
+
+/** A field-edit audit row carrying the per-field diff in `changes`. */
+const fieldEditEventSchema = baseEventSchema.extend({
+  kind: z.literal(CardEventKind.FieldEdit),
+  changes: z.array(fieldChangeSchema).min(1),
+});
+
+/**
+ * Validates a raw `card_events` audit document read out of MongoDB. A
+ * discriminated union on `kind`; the `preprocess` step injects
+ * `kind: "status_transition"` into legacy rows that predate the discriminator
+ * (written before field-edit auditing) so they keep parsing with no migration.
+ */
+export const cardEventDocumentSchema = z.preprocess(
+  (doc) => {
+    if (doc && typeof doc === "object" && !("kind" in doc)) {
+      return { kind: CardEventKind.StatusTransition, ...doc };
+    }
+    return doc;
+  },
+  z.discriminatedUnion("kind", [
+    statusTransitionEventSchema,
+    fieldEditEventSchema,
+  ]),
+);

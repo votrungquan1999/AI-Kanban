@@ -4,7 +4,7 @@ import { claimCard } from "@/cards/card.claim.service";
 import { createTask } from "@/cards/card.service";
 import { OriginType, RunState, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
-import { EventOutcome } from "@/cards/card-event.type";
+import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { cardEventsCollection, cardsCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
@@ -45,7 +45,10 @@ describe("claimCard", () => {
     // And a successful claim audit row is appended (create + claim = 2 events)
     const events = await listCardEvents(created.id);
     expect(events).toHaveLength(2);
-    const claimEvent = events.find((e) => e.to === Status.InProgress);
+    const claimEvent = events.find(
+      (e) =>
+        e.kind === CardEventKind.StatusTransition && e.to === Status.InProgress,
+    );
     expect(claimEvent?.outcome).toBe(EventOutcome.Success);
   });
 

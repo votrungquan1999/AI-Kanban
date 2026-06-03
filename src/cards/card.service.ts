@@ -147,9 +147,13 @@ export async function getTask(id: string): Promise<Card> {
 export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
   const db = await getDb();
 
+  // An explicit status filter is honored as-is; the default board view hides
+  // archived (soft-deleted) cards.
   const query: Filter<CardDocument> = {};
   if (filter.status) {
     query.status = filter.status;
+  } else {
+    query.status = { $ne: Status.Archived };
   }
 
   const docs = await findManyZ(cardsCollection(db), query, cardDocumentSchema, {

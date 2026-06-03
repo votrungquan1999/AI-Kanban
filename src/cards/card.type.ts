@@ -6,6 +6,8 @@ export enum Status {
   InProgress = "in_progress",
   NeedReview = "need_review",
   Done = "done",
+  /** Soft-deleted: hidden from the board's default view, not a board column. */
+  Archived = "archived",
 }
 
 /** What a card originated from. */

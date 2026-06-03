@@ -19,7 +19,7 @@ export const originSchema = z.discriminatedUnion("type", [
 export const createTaskInputSchema = z.object({
   title: z.string().min(1, "title is required"),
   description: z.string().optional(),
-  priority: z.number().int().default(0),
+  priority: z.number().int().min(0).max(3).default(0),
   origin: originSchema,
   dedupeKey: z.string().nullish(),
 });
@@ -29,3 +29,22 @@ export type CreateTaskInput = z.input<typeof createTaskInputSchema>;
 /** Fully-parsed input (defaults applied). */
 export type ParsedCreateTaskInput = z.output<typeof createTaskInputSchema>;
 export type Origin = z.output<typeof originSchema>;
+
+/**
+ * Validated input for editing a card's core fields. Every field is optional (a
+ * partial patch); only the keys present are changed. Fields are defined
+ * explicitly — NOT via `createTaskInputSchema.partial()` — so priority's
+ * create-time `.default(0)` does NOT leak in and silently force priority to 0 on
+ * a patch that does not touch it. A blank `description` is accepted here (the
+ * service decides whether to clear it).
+ */
+export const updateTaskInputSchema = z.object({
+  title: z.string().min(1, "title is required").optional(),
+  description: z.string().optional(),
+  priority: z.number().int().min(0).max(3).optional(),
+});
+
+/** Caller-facing edit input (any subset of the editable fields). */
+export type UpdateTaskInput = z.input<typeof updateTaskInputSchema>;
+/** Fully-parsed edit input. */
+export type ParsedUpdateTaskInput = z.output<typeof updateTaskInputSchema>;

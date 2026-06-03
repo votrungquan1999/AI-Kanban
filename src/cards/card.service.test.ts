@@ -164,7 +164,7 @@ describe("listTasks", () => {
     await createTask({
       title: "high",
       origin: { type: OriginType.Manual },
-      priority: 5,
+      priority: 3,
     });
     await createTask({
       title: "low-late",
@@ -196,6 +196,31 @@ describe("listTasks", () => {
 
     const done = await listTasks({ status: Status.Done });
     expect(done).toHaveLength(0);
+  });
+
+  it("excludes archived cards from the default board list but keeps them on an explicit archived filter", async () => {
+    // Given an open card and an archived card
+    const open = await createTask({
+      title: "stays-open",
+      origin: { type: OriginType.Manual },
+    });
+    const toArchive = await createTask({
+      title: "to-archive",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(toArchive.id, Status.Archived);
+
+    // When listing the default board (no filter), the archived card is hidden
+    const board = await listTasks();
+    expect(board.some((card) => card.id === toArchive.id)).toBe(false);
+    expect(board.some((card) => card.id === open.id)).toBe(true);
+
+    // But an explicit archived filter still returns it (and only archived cards)
+    const archived = await listTasks({ status: Status.Archived });
+    expect(archived.map((card) => card.id)).toContain(toArchive.id);
+    expect(archived.every((card) => card.status === Status.Archived)).toBe(
+      true,
+    );
   });
 });
 
