@@ -64,7 +64,7 @@ function toOriginDocument(
 export async function createTask(input: CreateTaskInput): Promise<Card> {
   const parsed = createTaskInputSchema.parse(input);
   const db = await getDb();
-  const number = await nextNumber(db);
+  const number = await nextNumber(db, "cards");
   const now = new Date();
 
   const doc: CardDocument = {
