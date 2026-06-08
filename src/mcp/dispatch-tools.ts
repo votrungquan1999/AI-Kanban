@@ -5,7 +5,18 @@ import type { RepoEntry, Status } from "@/cards/card.type";
 import { setWorkspace } from "@/cards/card.workspace.service";
 import { AppError } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
-import { appErrorToToolResult, toCardResult } from "@/mcp/tools";
+import {
+  appErrorToToolResult,
+  toCardResult,
+  toRecurringListResult,
+  toRecurringResult,
+} from "@/mcp/tools";
+import { startRecurring } from "@/recurring/recurring.claim.service";
+import {
+  completeRecurring,
+  failRecurring,
+} from "@/recurring/recurring.lifecycle.service";
+import { listRecurringDue } from "@/recurring/recurring.service";
 
 /**
  * Builds a readable failure result for a claim that returned nothing. A missing
@@ -111,6 +122,83 @@ export function createSetWorkspace(): (args: {
     try {
       const card = await setWorkspace(id, { workspacePath, repos });
       return toCardResult(card);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `list_recurring_due` handler: returns the recurring tasks that are
+ * due for the routine to execute now (under a `tasks` key). Takes no arguments.
+ * @returns A handler returning the due recurring tasks as structured content.
+ */
+export function createListRecurringDue(): () => Promise<CallToolResult> {
+  return async () => {
+    return toRecurringListResult(await listRecurringDue());
+  };
+}
+
+/**
+ * Builds the `start_recurring` handler: atomically claims a due task by its `id`
+ * argument. A claim that loses is surfaced as a readable error result carrying
+ * the distinct `ERR_ALREADY_RUNNING` / `ERR_NOT_DUE` / `ERR_NOT_FOUND` code so
+ * the routine can branch (skip vs report).
+ * @returns A handler that claims the task named by its `id` argument.
+ */
+export function createStartRecurring(): (args: {
+  id: string;
+}) => Promise<CallToolResult> {
+  return async ({ id }) => {
+    try {
+      return toRecurringResult(await startRecurring(id));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `complete_recurring` handler: marks a running task complete by its
+ * `id` argument, recording an optional short success `note`. A domain error is
+ * returned as a readable error result.
+ * @returns A handler that completes the task named by its `id` argument.
+ */
+export function createCompleteRecurring(): (args: {
+  id: string;
+  note?: string;
+}) => Promise<CallToolResult> {
+  return async ({ id, note }) => {
+    try {
+      return toRecurringResult(await completeRecurring(id, { note }));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `fail_recurring` handler: marks a running task failed by its `id`
+ * argument, recording the short `error` reason. A domain error is returned as a
+ * readable error result.
+ * @returns A handler that fails the task named by its `id` argument.
+ */
+export function createFailRecurring(): (args: {
+  id: string;
+  error: string;
+}) => Promise<CallToolResult> {
+  return async ({ id, error: failure }) => {
+    try {
+      return toRecurringResult(await failRecurring(id, { error: failure }));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);

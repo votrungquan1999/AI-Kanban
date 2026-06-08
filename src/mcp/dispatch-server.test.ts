@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createDispatchMcpServer } from "@/mcp/dispatch-server";
 
 describe("createDispatchMcpServer", () => {
-  it("registers exactly claim_card, get_card_context, set_status, set_workspace", async () => {
+  it("registers exactly the four card tools plus the four recurring queue tools", async () => {
     // Given the generic dispatch server
     const server = createDispatchMcpServer();
 
@@ -18,12 +18,16 @@ describe("createDispatchMcpServer", () => {
     ]);
     const { tools } = await client.listTools();
 
-    // Then exactly the four id-argument dispatch tools are exposed — nothing more
+    // Then exactly the eight id-argument dispatch tools are exposed — nothing more
     expect(tools.map((tool) => tool.name).sort()).toEqual([
       "claim_card",
+      "complete_recurring",
+      "fail_recurring",
       "get_card_context",
+      "list_recurring_due",
       "set_status",
       "set_workspace",
+      "start_recurring",
     ]);
 
     await client.close();

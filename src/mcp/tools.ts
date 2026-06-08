@@ -3,6 +3,7 @@ import { getTask, updateTaskStatus } from "@/cards/card.service";
 import type { Card, Status } from "@/cards/card.type";
 import { AppError } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
+import type { RecurringTask } from "@/recurring/recurring.type";
 
 /**
  * Builds a success tool result for a card: the card as structured content plus
@@ -15,6 +16,33 @@ export function toCardResult(card: Card): CallToolResult {
   return {
     structuredContent: { ...card },
     content: [{ type: "text", text: JSON.stringify(card) }],
+  };
+}
+
+/**
+ * Builds a success tool result for a recurring task: the task as structured
+ * content plus a JSON text mirror. Mirrors {@link toCardResult}.
+ * @param task - The recurring task to return to the routine.
+ * @returns A success tool result.
+ */
+export function toRecurringResult(task: RecurringTask): CallToolResult {
+  return {
+    structuredContent: { ...task },
+    content: [{ type: "text", text: JSON.stringify(task) }],
+  };
+}
+
+/**
+ * Builds a success tool result for a list of recurring tasks. The array is
+ * wrapped under a `tasks` key because `structuredContent` must be an object,
+ * not a bare array.
+ * @param tasks - The recurring tasks to return to the routine.
+ * @returns A success tool result.
+ */
+export function toRecurringListResult(tasks: RecurringTask[]): CallToolResult {
+  return {
+    structuredContent: { tasks },
+    content: [{ type: "text", text: JSON.stringify(tasks) }],
   };
 }
 

@@ -1,12 +1,18 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
 import { cardIdSchema, statusSchema } from "@/cards/card.schema";
 import { workspaceDeclarationSchema } from "@/cards/card.workspace.service";
 import {
   createClaimCard,
+  createCompleteRecurring,
+  createFailRecurring,
   createGetCardContext,
+  createListRecurringDue,
   createSetStatus,
   createSetWorkspace,
+  createStartRecurring,
 } from "@/mcp/dispatch-tools";
+import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
  * Registers the four generic id-argument dispatch tools — `claim_card`,
@@ -53,6 +59,46 @@ export function registerDispatchTools(server: McpServer): void {
       inputSchema: { id: cardIdSchema, ...workspaceDeclarationSchema.shape },
     },
     createSetWorkspace(),
+  );
+
+  server.registerTool(
+    "list_recurring_due",
+    {
+      description:
+        "List the recurring tasks that are due to run now (enabled, idle, due).",
+      inputSchema: {},
+    },
+    createListRecurringDue(),
+  );
+
+  server.registerTool(
+    "start_recurring",
+    {
+      description:
+        "Atomically claim a due recurring task by id (idle -> running).",
+      inputSchema: { id: recurringIdSchema },
+    },
+    createStartRecurring(),
+  );
+
+  server.registerTool(
+    "complete_recurring",
+    {
+      description:
+        "Mark a running recurring task complete by id, with an optional note.",
+      inputSchema: { id: recurringIdSchema, note: z.string().optional() },
+    },
+    createCompleteRecurring(),
+  );
+
+  server.registerTool(
+    "fail_recurring",
+    {
+      description:
+        "Mark a running recurring task failed by id, recording the error reason.",
+      inputSchema: { id: recurringIdSchema, error: z.string().min(1) },
+    },
+    createFailRecurring(),
   );
 }
 
