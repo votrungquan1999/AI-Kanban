@@ -53,14 +53,36 @@ function isAuthorized(request: Request): boolean {
 }
 
 /**
- * Handles MCP Streamable-HTTP `POST` requests. Gates on HTTP Basic auth before
- * delegating to the dispatch adapter, so an unauthenticated request is rejected
+ * Validates a `?token=` URL query parameter against the `MCP_URL_TOKEN`
+ * credential. This is the additive auth path for a claude.ai cloud routine
+ * connector, which can only carry a secret in the URL and cannot send a custom
+ * `Authorization` header. Short-circuits to `false` when either the configured
+ * token or the supplied token is empty, so an unset `MCP_URL_TOKEN` can never be
+ * matched by an absent/empty `?token=` (which {@link safeEqual} would otherwise
+ * treat as an empty-vs-empty match).
+ * @param request - The incoming request.
+ * @returns `true` only when a non-empty `?token=` matches a non-empty `MCP_URL_TOKEN`.
+ */
+function isTokenAuthorized(request: Request): boolean {
+  const configured = process.env.MCP_URL_TOKEN ?? "";
+  if (configured === "") return false;
+
+  const supplied = new URL(request.url).searchParams.get("token") ?? "";
+  if (supplied === "") return false;
+
+  return safeEqual(supplied, configured);
+}
+
+/**
+ * Handles MCP Streamable-HTTP `POST` requests. Gates on auth before delegating
+ * to the dispatch adapter — a request is admitted when HTTP Basic auth passes
+ * OR a valid `?token=` is present — so an unauthenticated request is rejected
  * with 401 and no tool ever runs.
  * @param request - The incoming MCP request.
  * @returns A 401 challenge when unauthorized, otherwise the adapter's response.
  */
 export async function POST(request: Request): Promise<Response> {
-  if (!isAuthorized(request)) {
+  if (!isAuthorized(request) && !isTokenAuthorized(request)) {
     return new Response(null, {
       status: 401,
       headers: { "WWW-Authenticate": "Basic" },

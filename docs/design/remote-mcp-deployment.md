@@ -45,6 +45,7 @@ A deployed `/api/mcp` is publicly reachable and can mutate cards, so it must be 
 - **Credentials:** a **single shared** username/password for the whole pool — `MCP_BASIC_USER` / `MCP_BASIC_PASS` in the Vercel environment. Per-session credentials are deferred (they only matter if we later need to attribute or revoke individual sessions — which the no-identity dispatch model intentionally avoids).
 - **Client side:** sessions register with the credential in a header:
   `claude mcp add --transport http ai-kanban-dispatch https://<app>/api/mcp --header "Authorization: Basic <base64 user:pass>"`.
+- **Additive `?token=` path (for URL-only clients):** a claude.ai cloud routine connector cannot send a custom `Authorization` header — it only carries a URL. So the gate also admits a request whose `?token=` query param matches `MCP_URL_TOKEN`. The `POST` gate is an **OR**: `isAuthorized` (Basic) OR `isTokenAuthorized` (token). `isTokenAuthorized` short-circuits to `false` when either `MCP_URL_TOKEN` or the supplied `?token=` is empty (so an unset env var can never be matched by an absent token via `safeEqual("", "")`), then reuses the same `safeEqual`. When `MCP_URL_TOKEN` is unset the endpoint behaves exactly as before (Basic-only). The token rides in the URL (may appear in logs) — acceptable for the single-user pool, same stance as the shared Basic credential. Cloud-routine connector setup: [recurring-routine-setup.md](../recurring-routine-setup.md).
 - The gate lives in the route, *outside* the tool handlers, so the four tools stay auth-agnostic and their existing tests are unaffected.
 
 ## MongoDB on serverless
@@ -60,6 +61,7 @@ A deployed `/api/mcp` is publicly reachable and can mutate cards, so it must be 
 | `MONGODB_DB` | Vercel | Database name (optional; driver default otherwise) |
 | `MCP_BASIC_USER` | Vercel | Shared Basic-auth username for `/api/mcp` |
 | `MCP_BASIC_PASS` | Vercel | Shared Basic-auth password for `/api/mcp` |
+| `MCP_URL_TOKEN` | Vercel | Optional shared secret for the additive `?token=` auth path (URL-only clients, e.g. a claude.ai cloud routine connector). Unset = token path disabled. |
 
 ## Open questions / deferred
 
