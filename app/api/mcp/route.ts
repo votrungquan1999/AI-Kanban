@@ -26,51 +26,59 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Validates an HTTP Basic `Authorization` header against the shared
- * `MCP_BASIC_USER` / `MCP_BASIC_PASS` credentials. Returns `false` (never
- * throws) on a missing, malformed, or mismatched credential so the route can
- * answer 401 instead of 500.
- * @param request - The incoming request.
- * @returns `true` only when valid Basic credentials match the configured pair.
+ * Validates a base64-encoded `user:pass` credential (the value that follows
+ * `Basic ` in an `Authorization` header) against the shared `MCP_BASIC_USER` /
+ * `MCP_BASIC_PASS` pair. Shared by both auth paths — the `Authorization` header
+ * and the `?token=` URL param carry the same base64 string. Returns `false`
+ * (never throws) on empty config, empty input, a malformed credential, or a
+ * mismatch, so the route answers 401 instead of 500. Short-circuits when the
+ * configured pair is empty (unset env) or the supplied value is empty, so an
+ * unset credential can never be matched by an empty/absent token (which
+ * {@link safeEqual} would otherwise treat as an empty-vs-empty match).
+ * @param encoded - The base64-encoded `user:pass` string.
+ * @returns `true` only when a non-empty credential matches a configured pair.
  */
-function isAuthorized(request: Request): boolean {
-  const header = request.headers.get("authorization");
-  if (!header?.startsWith("Basic ")) return false;
+function validateBasicCredential(encoded: string): boolean {
+  const envUser = process.env.MCP_BASIC_USER ?? "";
+  const envPass = process.env.MCP_BASIC_PASS ?? "";
+  if (envUser === "" && envPass === "") return false;
+  if (encoded === "") return false;
 
-  const decoded = Buffer.from(header.slice("Basic ".length), "base64").toString(
-    "utf8",
-  );
+  const decoded = Buffer.from(encoded, "base64").toString("utf8");
   const separator = decoded.indexOf(":");
   if (separator === -1) return false;
 
   const user = decoded.slice(0, separator);
   const pass = decoded.slice(separator + 1);
 
-  return (
-    safeEqual(user, process.env.MCP_BASIC_USER ?? "") &&
-    safeEqual(pass, process.env.MCP_BASIC_PASS ?? "")
-  );
+  return safeEqual(user, envUser) && safeEqual(pass, envPass);
 }
 
 /**
- * Validates a `?token=` URL query parameter against the `MCP_URL_TOKEN`
- * credential. This is the additive auth path for a claude.ai cloud routine
- * connector, which can only carry a secret in the URL and cannot send a custom
- * `Authorization` header. Short-circuits to `false` when either the configured
- * token or the supplied token is empty, so an unset `MCP_URL_TOKEN` can never be
- * matched by an absent/empty `?token=` (which {@link safeEqual} would otherwise
- * treat as an empty-vs-empty match).
+ * Validates an HTTP Basic `Authorization` header against the shared credentials.
  * @param request - The incoming request.
- * @returns `true` only when a non-empty `?token=` matches a non-empty `MCP_URL_TOKEN`.
+ * @returns `true` only when a valid `Basic <base64 user:pass>` header matches.
+ */
+function isAuthorized(request: Request): boolean {
+  const header = request.headers.get("authorization");
+  if (!header?.startsWith("Basic ")) return false;
+
+  return validateBasicCredential(header.slice("Basic ".length));
+}
+
+/**
+ * Validates a `?token=` URL query parameter against the shared credentials.
+ * This is the additive auth path for a claude.ai cloud routine connector, which
+ * can only carry a secret in the URL and cannot send a custom `Authorization`
+ * header. The token is the SAME `base64(user:pass)` used after `Basic ` in the
+ * header — no separate secret — so it is validated by the same
+ * {@link validateBasicCredential}.
+ * @param request - The incoming request.
+ * @returns `true` only when a non-empty `?token=` matches the configured pair.
  */
 function isTokenAuthorized(request: Request): boolean {
-  const configured = process.env.MCP_URL_TOKEN ?? "";
-  if (configured === "") return false;
-
   const supplied = new URL(request.url).searchParams.get("token") ?? "";
-  if (supplied === "") return false;
-
-  return safeEqual(supplied, configured);
+  return validateBasicCredential(supplied);
 }
 
 /**

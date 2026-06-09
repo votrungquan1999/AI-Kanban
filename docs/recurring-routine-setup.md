@@ -11,11 +11,11 @@ The recurring queue tools (`list_recurring_due`, `start_recurring`, `complete_re
 **A. A scheduled routine (cloud) — use the URL `?token=` path.** A routine runs in Claude's cloud sandbox and uses connectors registered in your **claude.ai account**, not local CLI config. A claude.ai custom connector accepts only a URL — it cannot send a custom `Authorization` header — so it authenticates via the `?token=` query-param path on `/api/mcp`. In **claude.ai → Settings → Connectors → Add custom connector**, register:
 
 ```
-https://<app>/api/mcp?token=<MCP_URL_TOKEN>
+https://<app>/api/mcp?token=<base64 user:pass>
 ```
 
-- `<MCP_URL_TOKEN>` is the value of the `MCP_URL_TOKEN` env var set in Vercel — the additive token auth path gating `/api/mcp` (see [remote-mcp-deployment.md](./design/remote-mcp-deployment.md)). When that env var is unset, the token path is disabled and a routine cannot authenticate.
-- The token rides in the URL (may appear in logs) — acceptable for a single-user pool. Rotate by changing `MCP_URL_TOKEN` in Vercel and updating the connector URL.
+- `<base64 user:pass>` is `base64(MCP_BASIC_USER:MCP_BASIC_PASS)` — the **same** encoded credential used after `Basic ` in the header (see path B and [remote-mcp-deployment.md](./design/remote-mcp-deployment.md)). There is no separate secret; the `?token=` path validates against the same `MCP_BASIC_*` env vars. When those are unset, both auth paths are disabled and a routine cannot authenticate.
+- The token rides in the URL (may appear in logs) — acceptable for a single-user pool. Rotate by changing `MCP_BASIC_USER`/`MCP_BASIC_PASS` in Vercel and updating the connector URL.
 - claude.ai connectors are proxied by Anthropic, so this works without allowlisting the app's host. Enable the connector for the routine in the routine's connector list.
 
 **B. A home session (local CLI) — use Basic auth.** A pre-started session on a real machine registers the connector locally with HTTP Basic credentials:

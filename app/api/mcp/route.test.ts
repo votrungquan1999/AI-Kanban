@@ -23,6 +23,17 @@ function basicAuth(user: string, pass: string): string {
 }
 
 /**
+ * Builds the bare `base64(user:pass)` token for the `?token=` URL path — the
+ * same encoded credential that follows `Basic ` in the header.
+ * @param user - Basic-auth username.
+ * @param pass - Basic-auth password.
+ * @returns The base64-encoded `user:pass` string.
+ */
+function basicToken(user: string, pass: string): string {
+  return Buffer.from(`${user}:${pass}`).toString("base64");
+}
+
+/**
  * Parses an mcp-handler Streamable-HTTP response. The transport answers a
  * JSON-RPC request over an SSE stream (`event: message\ndata: <json>\n\n`), so
  * the JSON-RPC payload lives on the `data:` line, not in `response.json()`.
@@ -151,18 +162,17 @@ describe("POST /api/mcp — tools/call claim_card", () => {
 });
 
 describe("POST /api/mcp — token auth rejection", () => {
-  it("rejects a wrong ?token= with 401 and runs no tool", async () => {
-    // Given a configured URL token, no Basic credentials, and a watched claim tool
-    delete process.env.MCP_BASIC_USER;
-    delete process.env.MCP_BASIC_PASS;
-    process.env.MCP_URL_TOKEN = "right-token";
+  it("rejects a ?token= whose base64 credential does not match, with 401 and no tool", async () => {
+    // Given configured Basic credentials and a watched claim tool
+    process.env.MCP_BASIC_USER = "mcp-user";
+    process.env.MCP_BASIC_PASS = "mcp-pass";
     const claimSpy = vi.spyOn(claimService, "claimCard");
     claimSpy.mockClear(); // file has no global mock reset; drop calls leaked from earlier describes
     const { POST } = await import("./route");
 
-    // When a tools/call arrives with a non-matching ?token= and no Authorization header
+    // When a tools/call arrives carrying the wrong base64(user:pass) as ?token=
     const res = await POST(
-      new Request(`${MCP_URL}?token=wrong-token`, {
+      new Request(`${MCP_URL}?token=${basicToken("mcp-user", "wrong-pass")}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: TOOLS_CALL_BODY,
@@ -174,34 +184,33 @@ describe("POST /api/mcp — token auth rejection", () => {
     expect(claimSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects an empty ?token= when MCP_URL_TOKEN is unset, with 401 and no tool", async () => {
-    // Given NO configured token and no Basic credentials (the empty-equality trap)
+  it("rejects ?token=Og== (base64 of ':') when credentials are unset, with 401 and no tool", async () => {
+    // Given NO configured credentials — the empty-equality trap: base64 ":" decodes
+    // to empty user + empty pass, which a naive compare would match against unset env
     delete process.env.MCP_BASIC_USER;
     delete process.env.MCP_BASIC_PASS;
-    delete process.env.MCP_URL_TOKEN;
     const claimSpy = vi.spyOn(claimService, "claimCard");
     claimSpy.mockClear(); // file has no global mock reset; drop calls leaked from earlier describes
     const { POST } = await import("./route");
 
-    // When a tools/call arrives with an empty ?token= (empty-vs-empty compare)
+    // When a tools/call arrives with ?token= decoding to "" : "" against unset creds
     const res = await POST(
-      new Request(`${MCP_URL}?token=`, {
+      new Request(`${MCP_URL}?token=${basicToken("", "")}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: TOOLS_CALL_BODY,
       }),
     );
 
-    // Then it is rejected with 401 and no tool ran — the short-circuit, not safeEqual("","")
+    // Then the empty-credential short-circuit rejects it — 401, no tool ran
     expect(res.status).toBe(401);
     expect(claimSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects a request with neither token nor Basic configured or supplied, with 401", async () => {
-    // Given neither auth path is configured (both Basic vars and the token cleared)
-    delete process.env.MCP_BASIC_USER;
-    delete process.env.MCP_BASIC_PASS;
-    delete process.env.MCP_URL_TOKEN;
+  it("rejects a request with neither a Basic header nor a ?token=, with 401", async () => {
+    // Given credentials are configured but the request supplies nothing
+    process.env.MCP_BASIC_USER = "mcp-user";
+    process.env.MCP_BASIC_PASS = "mcp-pass";
     const claimSpy = vi.spyOn(claimService, "claimCard");
     claimSpy.mockClear(); // file has no global mock reset; drop calls leaked from earlier describes
     const { POST } = await import("./route");
@@ -215,61 +224,28 @@ describe("POST /api/mcp — token auth rejection", () => {
       }),
     );
 
-    // Then the additive gate still admits nothing by default — 401, no tool ran
+    // Then the gate admits nothing without a credential — 401, no tool ran
     expect(res.status).toBe(401);
     expect(claimSpy).not.toHaveBeenCalled();
-  });
-
-  it("still admits a valid Basic credential when the token path is also configured", async () => {
-    // Given BOTH auth paths configured (Basic creds and a distinct URL token)
-    process.env.MCP_BASIC_USER = "mcp-user";
-    process.env.MCP_BASIC_PASS = "mcp-pass";
-    process.env.MCP_URL_TOKEN = "a-different-token";
-    const { POST } = await import("./route");
-
-    // When a tools/list request arrives with a valid Basic header and NO ?token=
-    const res = await POST(
-      new Request(MCP_URL, {
-        method: "POST",
-        headers: {
-          Authorization: basicAuth("mcp-user", "mcp-pass"),
-          "Content-Type": "application/json",
-          Accept: "application/json, text/event-stream",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "tools/list",
-          params: {},
-        }),
-      }),
-    );
-
-    // Then Basic still admits (the token path is an OR'd alternative, not an override)
-    const message = await parseMcpResponse(res);
-    const names = (message.result?.tools ?? []).map((tool) => tool.name);
-    expect(names).toContain("claim_card");
-    expect(names).toHaveLength(8);
   });
 });
 
 describe("POST /api/mcp — token auth via ?token=", () => {
   useTestMongo();
 
-  it("admits a request with a valid ?token= and runs the tool", async () => {
-    // Given a configured URL token, no Basic credentials, and a todo card to claim
-    delete process.env.MCP_BASIC_USER;
-    delete process.env.MCP_BASIC_PASS;
-    process.env.MCP_URL_TOKEN = "url-secret";
+  it("admits a request with a valid base64 ?token= and runs the tool", async () => {
+    // Given configured Basic credentials (reused as the URL token) and a todo card
+    process.env.MCP_BASIC_USER = "mcp-user";
+    process.env.MCP_BASIC_PASS = "mcp-pass";
     const created = await createTask({
       title: "claim via token",
       origin: { type: OriginType.Manual },
     });
     const { POST } = await import("./route");
 
-    // When a tools/call claim_card arrives with a matching ?token= and no Authorization header
+    // When a tools/call claim_card arrives with ?token=base64(user:pass), no Authorization header
     const res = await POST(
-      new Request(`${MCP_URL}?token=url-secret`, {
+      new Request(`${MCP_URL}?token=${basicToken("mcp-user", "mcp-pass")}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
