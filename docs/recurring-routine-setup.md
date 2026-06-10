@@ -4,6 +4,42 @@ How to wire a Claude cloud **routine** (scheduled cron run) to process AI-Kanban
 
 Related: the committed skill [`.claude/skills/run-recurring-queue/SKILL.md`](../.claude/skills/run-recurring-queue/SKILL.md) (the loop the routine runs); the connector deployment doc [`docs/design/remote-mcp-deployment.md`](./design/remote-mcp-deployment.md); the design rationale in [`docs/brainstorm/next-feature/`](./brainstorm/next-feature/README.md).
 
+> **As actually deployed (2026-06-10):** the operator's claude.ai org has **custom connectors disabled**, so the connector path in §1A below is not usable. Instead the routine drives the MCP endpoint **directly over `curl`**, with the token embedded in its prompt — no connector, no skill upload, no home machine. The copy-paste runbook for re-creating it is **§0 below**; §1–§4 remain as reference for the connector-based path if connectors are ever enabled.
+
+## 0. Runbook — re-create the cloud routine over curl (no connector)
+
+Use this when asked to "set up the recurring routine again." It needs nothing in the claude.ai connector UI.
+
+**Step 1 — get the auth token.** The deploy is provisioned by the sibling repo `personal-infra` (Pulumi → Vercel). Domain `ai-kanban.quanvo.dev`; `MCP_BASIC_USER` = `ai-kanban-agent`; `MCP_BASIC_PASS` = Pulumi secret output `aiKanbanMcpBasicPass`. Retrieve and base64-encode it:
+
+```bash
+cd <path>/personal-infra && set -a && . ./.env && set +a   # loads PULUMI_ACCESS_TOKEN; stack votrungquan1999/prod
+PASS=$(pulumi stack output aiKanbanMcpBasicPass --show-secrets)   # NOT --stack prod (use selected stack)
+printf '%s' "ai-kanban-agent:$PASS" | base64                      # => the <TOKEN>
+```
+
+**Step 2 — verify the token authenticates** (expect a JSON-RPC line listing 8 tools / `{"tasks":[]}`):
+
+```bash
+curl -s -X POST "https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_recurring_due","arguments":{}}}' | sed -n 's/^data: //p'
+```
+
+**Step 3 — create the routine** via the `RemoteTrigger` tool (`action: "create"`), repo-less, every 3 hours. Key body fields:
+- `cron_expression: "0 */3 * * *"` (every 3h; min floor is 1h), `enabled: true`
+- `job_config.ccr.environment_id`: an `anthropic_cloud` env id (list via `/schedule`; was `env_01YCe4F1s4Rxp7KMWrezGszJ`)
+- `session_context`: `{ model: "claude-sonnet-4-6", sources: [], allowed_tools: ["Bash", "WebSearch", "WebFetch"] }`
+- `events[0].data`: `{ uuid: <fresh v4>, session_id: "", type: "user", parent_tool_use_id: null, message: { role: "user", content: <PROMPT> } }`
+
+`<PROMPT>` (embeds the token; instructs the agent to drive the queue over curl):
+
+> You are a scheduled run that processes the AI-Kanban recurring-task queue. There is NO MCP connector — call the JSON-RPC endpoint directly over HTTPS with curl (Bash); it is stateless (POST one request, read the `data:` SSE line). URL (secret — never print it): `https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>`. To call tool TOOL with args OBJ: `curl -s -X POST "$URL" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"TOOL","arguments":OBJ}}' | sed -n 's/^data: //p'`. Then: (1) call `list_recurring_due` with `{}`; read `result.structuredContent.tasks`; if empty, exit cleanly. (2) For each task: `start_recurring {"id":"…"}` — on `isError` read `structuredContent.code` and SKIP (ERR_ALREADY_RUNNING / ERR_NOT_DUE / ERR_NOT_FOUND), no retry; else carry out the task's `instruction`; then report exactly once — `complete_recurring {"id":"…","note":"…"}` on success or `fail_recurring {"id":"…","error":"…"}` on failure. A clean exit is NOT success — you MUST report every claimed task. Isolate per-task failures. Never print the token. Only act on ids from `list_recurring_due`.
+
+**Step 4 — test + view.** `RemoteTrigger` `action: "run"` to fire once now; transcripts at `https://claude.ai/code/routines/<trigger_id>` (the API does not return run output). Add a recurring task on `/recurring` and Run-now to exercise a real claim→complete.
+
+**Rotation.** Change `MCP_BASIC_PASS` in Pulumi/Vercel → recompute `<TOKEN>` (Step 1) → `RemoteTrigger` `update` the routine prompt. Current routine: `trig_01X7MotrGpfKLKwHZPk1gVth`.
+
 ## 1. Register the MCP connector (one-time)
 
 The recurring queue tools (`list_recurring_due`, `start_recurring`, `complete_recurring`, `fail_recurring`) register through the **same** `ai-kanban-dispatch` connector as the existing card dispatch tools — there is no separate connector. There are two registration paths depending on **where the connector lives**, because they authenticate differently:
