@@ -6,6 +6,10 @@ import { type Card as CardData, OriginType, Status } from "@/cards/card.type";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatRelativeAge } from "@/lib/relative-time";
+import {
+  BlockDurationPicker,
+  DEFAULT_BLOCK_INTERVAL_MS,
+} from "./block-duration-picker.ui";
 import { CopyDispatch } from "./copy-dispatch.ui";
 import { cardDetailHref } from "./href";
 
@@ -25,21 +29,25 @@ const BLOCKABLE_STATUSES: Status[] = [
  * @param card - The card to display.
  * @param now - Reference time for the relative age (defaults to render time;
  *   injected in tests for determinism).
- * @param blockAction - Optional action to send an active card to Blocked; when
- *   present a "Block" button shows on Todo/In Progress/Need Review tiles.
+ * @param blockAction - Optional action to send an active card to Blocked for a
+ *   chosen interval; when present a duration picker + "Block" button shows on
+ *   Todo/In Progress/Need Review tiles.
  * @param stillBlockedAction - Optional action to restart a blocked card's clock;
- *   when present a "Still Blocked" button shows only on Blocked tiles.
+ *   when present a "Reset timer" button shows only on Blocked tiles.
+ * @param defaultIntervalMs - The board default pre-filled into the block picker.
  */
 export function CardTile({
   card,
   now,
   blockAction,
   stillBlockedAction,
+  defaultIntervalMs,
 }: {
   card: CardData;
   now?: Date;
-  blockAction?: (cardId: string) => void;
+  blockAction?: (cardId: string, intervalMs: number) => void;
   stillBlockedAction?: (cardId: string) => void;
+  defaultIntervalMs?: number;
 }) {
   const reference = now ?? new Date();
   const ageSource = card.pickedAt ?? card.createdAt;
@@ -106,16 +114,20 @@ export function CardTile({
         </div>
       </Link>
 
+      {isBlocked && card.blockedUntil ? (
+        <span className="text-xs text-muted-foreground">
+          → Need Review {formatRelativeAge(card.blockedUntil, reference)}
+        </span>
+      ) : null}
+
       {showBlock || showStillBlocked ? (
         <div className="grid grid-flow-col justify-start gap-1">
-          {showBlock ? (
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => blockAction?.(card.id)}
-            >
-              Block
-            </Button>
+          {showBlock && blockAction ? (
+            <BlockDurationPicker
+              cardId={card.id}
+              defaultIntervalMs={defaultIntervalMs ?? DEFAULT_BLOCK_INTERVAL_MS}
+              blockAction={blockAction}
+            />
           ) : null}
           {showStillBlocked ? (
             <Button
@@ -123,7 +135,7 @@ export function CardTile({
               size="xs"
               onClick={() => stillBlockedAction?.(card.id)}
             >
-              Still Blocked
+              Reset timer
             </Button>
           ) : null}
         </div>

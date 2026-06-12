@@ -25,6 +25,7 @@ const card: Card = {
   pickedAt: null,
   finishedAt: null,
   blockedUntil: null,
+  blockInterval: null,
   workspacePath: "/work/card-7",
   repos: [
     {
@@ -52,7 +53,7 @@ function renderDetail(props: {
     patch: { title?: string; description?: string; priority?: number },
   ) => Promise<void>;
   deleteAction?: (cardId: string) => Promise<void>;
-  blockAction?: (cardId: string) => void;
+  blockAction?: (cardId: string, intervalMs: number) => void;
   stillBlockedAction?: (cardId: string) => void;
   now?: Date;
 }) {
@@ -234,7 +235,7 @@ describe("CardDetail", () => {
     expect(moveAction).toHaveBeenCalledWith(card.id, Status.Done);
   });
 
-  it("shows the remaining time and a Still Blocked action for a blocked card", async () => {
+  it("shows the remaining time and a Reset timer action for a blocked card", async () => {
     const stillBlockedAction = vi.fn();
     const now = new Date("2026-01-02T10:00:00.000Z");
     const blockedCard: Card = {
@@ -249,9 +250,9 @@ describe("CardDetail", () => {
       /in 2 hours/i,
     );
 
-    // and the Still Blocked action restarts the clock
+    // and the Reset timer action restarts the clock
     await userEvent.click(
-      await screen.findByRole("button", { name: /still blocked/i }),
+      await screen.findByRole("button", { name: /reset timer/i }),
     );
     expect(stillBlockedAction).toHaveBeenCalledWith(blockedCard.id);
   });

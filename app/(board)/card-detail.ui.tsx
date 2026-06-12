@@ -14,6 +14,10 @@ import {
 } from "@/components/ui/drawer";
 import { formatRelativeAge } from "@/lib/relative-time";
 import {
+  BlockDurationPicker,
+  DEFAULT_BLOCK_INTERVAL_MS,
+} from "./block-duration-picker.ui";
+import {
   CardEditProvider,
   useCardEditActions,
   useCardEditMode,
@@ -107,14 +111,16 @@ function CardDetailBody({
   deleteAction,
   blockAction,
   stillBlockedAction,
+  defaultIntervalMs,
   now,
 }: {
   card: Card;
   moveAction?: MoveAction;
   editAction?: EditAction;
   deleteAction?: DeleteAction;
-  blockAction?: (cardId: string) => void;
+  blockAction?: (cardId: string, intervalMs: number) => void;
   stillBlockedAction?: (cardId: string) => void;
+  defaultIntervalMs?: number;
   now?: Date;
 }) {
   const isEditing = useCardEditMode();
@@ -176,15 +182,12 @@ function CardDetailBody({
 
       {showBlock || showStillBlocked ? (
         <div className="grid grid-flow-col justify-start gap-2">
-          {showBlock ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => blockAction?.(card.id)}
-            >
-              Block
-            </Button>
+          {showBlock && blockAction ? (
+            <BlockDurationPicker
+              cardId={card.id}
+              defaultIntervalMs={defaultIntervalMs ?? DEFAULT_BLOCK_INTERVAL_MS}
+              blockAction={blockAction}
+            />
           ) : null}
           {showStillBlocked ? (
             <Button
@@ -193,7 +196,7 @@ function CardDetailBody({
               size="sm"
               onClick={() => stillBlockedAction?.(card.id)}
             >
-              Still Blocked
+              Reset timer
             </Button>
           ) : null}
         </div>
@@ -286,6 +289,10 @@ function CardDetailBody({
  * @param moveAction - Optional server action to move the card's status.
  * @param editAction - Optional server action to edit the card's core fields.
  * @param deleteAction - Optional server action to archive the card.
+ * @param blockAction - Optional action to block the card for a chosen interval.
+ * @param stillBlockedAction - Optional action to restart a blocked card's clock.
+ * @param defaultIntervalMs - Board default pre-filled into the block picker.
+ * @param now - Reference time for the remaining-block hint (injected in tests).
  */
 export function CardDetail({
   card,
@@ -295,6 +302,7 @@ export function CardDetail({
   deleteAction,
   blockAction,
   stillBlockedAction,
+  defaultIntervalMs,
   now,
 }: {
   card: Card | null;
@@ -302,8 +310,9 @@ export function CardDetail({
   moveAction?: MoveAction;
   editAction?: EditAction;
   deleteAction?: DeleteAction;
-  blockAction?: (cardId: string) => void;
+  blockAction?: (cardId: string, intervalMs: number) => void;
   stillBlockedAction?: (cardId: string) => void;
+  defaultIntervalMs?: number;
   now?: Date;
 }) {
   const router = useRouter();
@@ -326,6 +335,7 @@ export function CardDetail({
               deleteAction={deleteAction}
               blockAction={blockAction}
               stillBlockedAction={stillBlockedAction}
+              defaultIntervalMs={defaultIntervalMs}
               now={now}
             />
           </CardEditProvider>

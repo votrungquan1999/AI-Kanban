@@ -21,6 +21,7 @@ function makeCard(partial: Partial<Card> = {}): Card {
     pickedAt: null,
     finishedAt: null,
     blockedUntil: null,
+    blockInterval: null,
     workspacePath: null,
     repos: [],
     ...partial,
@@ -101,21 +102,54 @@ describe("CardTile", () => {
     expect(screen.queryByTestId("tile-recurring")).not.toBeInTheDocument();
   });
 
-  it("offers a Block action on an active card and blocks it when clicked", () => {
+  it("offers a Block action on an active card and blocks it for the board default when clicked", () => {
     const blockAction = vi.fn();
     const card = makeCard({ status: Status.Todo });
     render(
       <ToastProvider>
-        <CardTile card={card} blockAction={blockAction} />
+        <CardTile
+          card={card}
+          blockAction={blockAction}
+          defaultIntervalMs={7_200_000}
+        />
       </ToastProvider>,
     );
 
+    // Clicking Block without changing the picker uses the pre-filled default
     fireEvent.click(screen.getByRole("button", { name: /^block$/i }));
 
-    expect(blockAction).toHaveBeenCalledWith(card.id);
+    expect(blockAction).toHaveBeenCalledWith(card.id, 7_200_000);
   });
 
-  it("offers a Still Blocked action on a blocked card and resets it when clicked", () => {
+  it("shows how long until a blocked card returns to review", () => {
+    const now = new Date("2026-01-02T10:00:00.000Z");
+    const card = makeCard({
+      status: Status.Blocked,
+      blockedUntil: "2026-01-02T12:00:00.000Z", // 2 hours after `now`
+    });
+    render(
+      <ToastProvider>
+        <CardTile card={card} now={now} />
+      </ToastProvider>,
+    );
+
+    // The tile tells the operator when it will auto-move to Need Review
+    expect(screen.getByText(/need review/i)).toHaveTextContent(/in 2 hours/i);
+  });
+
+  it("shows no countdown for a blocked card that has no deadline", () => {
+    const card = makeCard({ status: Status.Blocked, blockedUntil: null });
+    render(
+      <ToastProvider>
+        <CardTile card={card} />
+      </ToastProvider>,
+    );
+
+    // The guard hides the line when there is no deadline to count down to
+    expect(screen.queryByText(/need review/i)).not.toBeInTheDocument();
+  });
+
+  it("offers a Reset timer action on a blocked card and resets it when clicked", () => {
     const stillBlockedAction = vi.fn();
     const card = makeCard({ status: Status.Blocked });
     render(
@@ -124,11 +158,11 @@ describe("CardTile", () => {
       </ToastProvider>,
     );
 
-    // a blocked card offers "Still Blocked", not "Block"
+    // a blocked card offers "Reset timer", not "Block"
     expect(
       screen.queryByRole("button", { name: /^block$/i }),
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /still blocked/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset timer/i }));
 
     expect(stillBlockedAction).toHaveBeenCalledWith(card.id);
   });
