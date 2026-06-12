@@ -3,7 +3,7 @@
 import { CopyIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useOptimistic } from "react";
-import type { Card } from "@/cards/card.type";
+import { type Card, Status } from "@/cards/card.type";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -12,6 +12,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { formatRelativeAge } from "@/lib/relative-time";
 import {
   CardEditProvider,
   useCardEditActions,
@@ -95,17 +96,26 @@ function CopyableRow({ label, value }: { label: string; value: string }) {
  * Body listing everything that matters about a card. When `moveAction` is
  * provided the status row becomes a move picker; when `editAction` is provided
  * an Edit button reveals the inline edit form for title/description/priority.
+ * When `blockAction`/`stillBlockedAction` are provided, the sheet offers the
+ * matching quick action; a blocked card also shows a remaining-time hint
+ * computed against `now` (injected in tests for determinism).
  */
 function CardDetailBody({
   card,
   moveAction,
   editAction,
   deleteAction,
+  blockAction,
+  stillBlockedAction,
+  now,
 }: {
   card: Card;
   moveAction?: MoveAction;
   editAction?: EditAction;
   deleteAction?: DeleteAction;
+  blockAction?: (cardId: string) => void;
+  stillBlockedAction?: (cardId: string) => void;
+  now?: Date;
 }) {
   const isEditing = useCardEditMode();
   const { startEdit } = useCardEditActions();
@@ -134,6 +144,14 @@ function CardDetailBody({
     await editAction?.(cardId, patch);
   }
 
+  const isBlocked = optimisticCard.status === Status.Blocked;
+  const canBlock =
+    optimisticCard.status === Status.Todo ||
+    optimisticCard.status === Status.InProgress ||
+    optimisticCard.status === Status.NeedReview;
+  const showBlock = Boolean(blockAction) && canBlock;
+  const showStillBlocked = Boolean(stillBlockedAction) && isBlocked;
+
   return (
     <>
       <DrawerHeader>
@@ -148,6 +166,38 @@ function CardDetailBody({
           {STATUS_LABELS[optimisticCard.status]}
         </DetailRow>
       )}
+
+      {isBlocked && optimisticCard.blockedUntil ? (
+        <DetailRow label="Blocked">
+          Auto-moves to Need Review{" "}
+          {formatRelativeAge(optimisticCard.blockedUntil, now ?? new Date())}
+        </DetailRow>
+      ) : null}
+
+      {showBlock || showStillBlocked ? (
+        <div className="grid grid-flow-col justify-start gap-2">
+          {showBlock ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => blockAction?.(card.id)}
+            >
+              Block
+            </Button>
+          ) : null}
+          {showStillBlocked ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => stillBlockedAction?.(card.id)}
+            >
+              Still Blocked
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {isEditing && editAction ? (
         <CardEditForm card={optimisticCard} editAction={handleSave} />
@@ -243,12 +293,18 @@ export function CardDetail({
   moveAction,
   editAction,
   deleteAction,
+  blockAction,
+  stillBlockedAction,
+  now,
 }: {
   card: Card | null;
   open: boolean;
   moveAction?: MoveAction;
   editAction?: EditAction;
   deleteAction?: DeleteAction;
+  blockAction?: (cardId: string) => void;
+  stillBlockedAction?: (cardId: string) => void;
+  now?: Date;
 }) {
   const router = useRouter();
 
@@ -268,6 +324,9 @@ export function CardDetail({
               moveAction={moveAction}
               editAction={editAction}
               deleteAction={deleteAction}
+              blockAction={blockAction}
+              stillBlockedAction={stillBlockedAction}
+              now={now}
             />
           </CardEditProvider>
         ) : null}

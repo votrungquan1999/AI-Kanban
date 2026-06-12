@@ -24,6 +24,7 @@ const card: Card = {
   updatedAt: "2026-01-02T09:00:00.000Z",
   pickedAt: null,
   finishedAt: null,
+  blockedUntil: null,
   workspacePath: "/work/card-7",
   repos: [
     {
@@ -51,6 +52,9 @@ function renderDetail(props: {
     patch: { title?: string; description?: string; priority?: number },
   ) => Promise<void>;
   deleteAction?: (cardId: string) => Promise<void>;
+  blockAction?: (cardId: string) => void;
+  stillBlockedAction?: (cardId: string) => void;
+  now?: Date;
 }) {
   return render(
     <ToastProvider>
@@ -228,5 +232,27 @@ describe("CardDetail", () => {
 
     // Then the card is moved to that column
     expect(moveAction).toHaveBeenCalledWith(card.id, Status.Done);
+  });
+
+  it("shows the remaining time and a Still Blocked action for a blocked card", async () => {
+    const stillBlockedAction = vi.fn();
+    const now = new Date("2026-01-02T10:00:00.000Z");
+    const blockedCard: Card = {
+      ...card,
+      status: Status.Blocked,
+      blockedUntil: "2026-01-02T12:00:00.000Z", // 2 hours after `now`
+    };
+    renderDetail({ card: blockedCard, open: true, stillBlockedAction, now });
+
+    // The sheet tells the operator when it will auto-move
+    expect(await screen.findByText(/auto-moves/i)).toHaveTextContent(
+      /in 2 hours/i,
+    );
+
+    // and the Still Blocked action restarts the clock
+    await userEvent.click(
+      await screen.findByRole("button", { name: /still blocked/i }),
+    );
+    expect(stillBlockedAction).toHaveBeenCalledWith(blockedCard.id);
   });
 });
