@@ -69,6 +69,9 @@ export const cardDocumentSchema = z.object({
   // optional AND nullable: legacy docs OMIT the field (absent ≠ null), so
   // `.optional()` lets them parse; the mapper coerces the absent case to null.
   blockedUntil: z.date().nullable().optional(),
+  // Same legacy-safe shape: the block interval (ms) the card was last blocked
+  // with; absent on pre-feature docs, mapped to null.
+  blockInterval: z.number().nullable().optional(),
   workspacePath: z.string().nullable(),
   repos: z.array(repoEntrySchema),
 });

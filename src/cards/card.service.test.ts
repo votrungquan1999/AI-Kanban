@@ -243,6 +243,81 @@ describe("updateTaskStatus", () => {
     expect(done.pickedAt).toBe(inProgress.pickedAt);
   });
 
+  it("blocks a card for a chosen interval and remembers that interval", async () => {
+    // Given a fresh card
+    const card = await createTask({
+      title: "block me for an hour",
+      origin: { type: OriginType.Manual },
+    });
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+
+    // When the user blocks it with an explicit 1-hour interval
+    const blocked = await updateTaskStatus(card.id, Status.Blocked, {
+      intervalMs: ONE_HOUR_MS,
+    });
+
+    // Then the card remembers the chosen interval and its deadline is ~1h out
+    // (the chosen value, not the 2h board default)
+    expect(blocked.blockInterval).toBe(ONE_HOUR_MS);
+    const deadlineMs = new Date(blocked.blockedUntil as string).getTime();
+    expect(Math.abs(deadlineMs - (Date.now() + ONE_HOUR_MS))).toBeLessThan(
+      60_000,
+    );
+  });
+
+  it("replays the card's own interval when its timer is reset with no new one", async () => {
+    // Given a card blocked with an explicit 1-hour interval
+    const card = await createTask({
+      title: "reset me",
+      origin: { type: OriginType.Manual },
+    });
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    await updateTaskStatus(card.id, Status.Blocked, {
+      intervalMs: ONE_HOUR_MS,
+    });
+
+    // When the user resets the timer (re-enters Blocked WITHOUT a new interval)
+    const reset = await updateTaskStatus(card.id, Status.Blocked);
+
+    // Then the countdown restarts from the card's OWN 1-hour interval, not the
+    // 2h board default
+    expect(reset.blockInterval).toBe(ONE_HOUR_MS);
+    const deadlineMs = new Date(reset.blockedUntil as string).getTime();
+    expect(Math.abs(deadlineMs - (Date.now() + ONE_HOUR_MS))).toBeLessThan(
+      60_000,
+    );
+  });
+
+  it("falls back to the board default when resetting a legacy blocked card with no stored interval", async () => {
+    // Given a legacy blocked card that never recorded an interval (blockInterval null)
+    const card = await createTask({
+      title: "legacy block",
+      origin: { type: OriginType.Manual },
+    });
+    const db = await getDb();
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(card.id) },
+      {
+        $set: {
+          status: Status.Blocked,
+          blockInterval: null,
+          blockedUntil: new Date(Date.now() + 60_000),
+        },
+      },
+    );
+
+    // When its timer is reset (re-enters Blocked with no interval)
+    const reset = await updateTaskStatus(card.id, Status.Blocked);
+
+    // Then it falls back to the seeded 2h board default
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    expect(reset.blockInterval).toBe(TWO_HOURS_MS);
+    const deadlineMs = new Date(reset.blockedUntil as string).getTime();
+    expect(Math.abs(deadlineMs - (Date.now() + TWO_HOURS_MS))).toBeLessThan(
+      60_000,
+    );
+  });
+
   it("lets the UI jump straight todo -> done (override, no edge constraint)", async () => {
     // Given a fresh todo card
     const card = await createTask({

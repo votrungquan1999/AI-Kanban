@@ -48,3 +48,20 @@ describe("cardDocumentSchema blocked-until back-compat", () => {
     expect(card.blockedUntil).toBeNull();
   });
 });
+
+describe("cardDocumentSchema block-interval", () => {
+  it("carries a stored block interval through to the client card", () => {
+    // Given a card document stored with an explicit 1-hour block interval
+    const doc = {
+      ...legacyCardDocWithoutBlockedUntil(),
+      blockInterval: 3_600_000,
+    };
+
+    // When it is read back through the parse-on-read boundary and mapped
+    const parsed = cardDocumentSchema.parse(doc);
+    const card = toClientCard(parsed);
+
+    // Then the client card remembers that interval
+    expect(card.blockInterval).toBe(3_600_000);
+  });
+});

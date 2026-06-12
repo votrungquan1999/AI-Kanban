@@ -23,6 +23,7 @@ import { Caller, legalFromStatuses } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { findManyZ, findOneAndUpdateZ, findOneZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
+import { getDefaultBlockInterval } from "@/settings/settings.service";
 
 /** Optional filter for {@link listTasks}. */
 interface ListTasksFilter {
@@ -32,6 +33,12 @@ interface ListTasksFilter {
 /** Options for {@link updateTaskStatus}. */
 interface UpdateStatusOptions {
   caller?: Caller;
+  /**
+   * The block countdown duration (ms) to apply when moving INTO Blocked. When
+   * omitted, the card's own stored interval is replayed, falling back to the
+   * board default (see {@link updateTaskStatus}).
+   */
+  intervalMs?: number;
 }
 
 /** True if the error is a MongoDB duplicate-key (E11000) error. */
@@ -87,6 +94,7 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
     pickedAt: null,
     finishedAt: null,
     blockedUntil: null,
+    blockInterval: null,
     workspacePath: null,
     repos: [],
   };
@@ -174,12 +182,16 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
  * always bumps. When the update matches nothing, a single follow-up read
  * disambiguates: a missing card throws {@link ErrorCode.NotFound}, an existing
  * card on an illegal source status throws {@link ErrorCode.InvalidTransition}.
- * `blockedUntil` is driven off the same atomic update: entering Blocked (and
- * re-entering it via "Still Blocked") starts/restarts a 2h server-clock
- * countdown, leaving Blocked clears it, and any other move preserves it.
+ * `blockedUntil` is driven off the same atomic update: entering Blocked starts
+ * a server-clock countdown of `options.intervalMs`; re-entering it ("Reset
+ * timer") with no interval replays the card's own stored `blockInterval`,
+ * falling back to the board default for a legacy card that never recorded one.
+ * The resolved interval is also stored back on `blockInterval`. Leaving Blocked
+ * clears `blockedUntil`; any other move preserves both fields.
  * @param id - The card's hex id.
  * @param status - The target status.
- * @param options - Caller designation (defaults to the UI caller).
+ * @param options - Caller designation (defaults to the UI caller) and the
+ *   optional block interval (ms) applied when moving into Blocked.
  * @returns The updated card mapped to the client-facing shape.
  */
 export async function updateTaskStatus(
@@ -200,6 +212,19 @@ export async function updateTaskStatus(
   const preImage = await cardsCollection(db).findOne({ _id });
   const isFromBlocked = preImage?.status === Status.Blocked;
 
+  // The countdown applied when entering Blocked: the explicit interval if one
+  // was supplied; otherwise "Reset timer" replays the card's own stored
+  // interval, falling back to the board default for a legacy card that never
+  // recorded one. Resolved only on a to-Blocked transition. The pre-image read
+  // above already provides the stored interval — no extra round-trip.
+  let resolvedInterval: number | undefined;
+  if (isToBlocked) {
+    resolvedInterval =
+      options.intervalMs ??
+      preImage?.blockInterval ??
+      (await getDefaultBlockInterval());
+  }
+
   // UI overrides any→any (bare `_id` filter); other callers are constrained to
   // their legal source statuses via `$in`, so an illegal move matches nothing.
   const filter =
@@ -219,15 +244,18 @@ export async function updateTaskStatus(
             ? { $ifNull: ["$pickedAt", "$$NOW"] }
             : "$pickedAt",
           finishedAt: isToDone ? "$$NOW" : "$finishedAt",
-          // Into Blocked → start a 2h server-clock countdown (also resets it on
-          // "Still Blocked", since that re-enters Blocked). Out of Blocked →
-          // clear it. Otherwise preserve the existing value. isToBlocked is
-          // checked first so a Blocked→Blocked reset wins over the clear branch.
+          // Into Blocked → start a server-clock countdown of `resolvedInterval`
+          // (also resets it on "Reset timer", which re-enters Blocked). Out of
+          // Blocked → clear it. Otherwise preserve the existing value. isToBlocked
+          // is checked first so a Blocked→Blocked reset wins over the clear branch.
           blockedUntil: isToBlocked
-            ? { $add: ["$$NOW", 7_200_000] }
+            ? { $add: ["$$NOW", resolvedInterval] }
             : isFromBlocked
               ? null
               : "$blockedUntil",
+          // Remember the interval the card was blocked with (replayed by "Reset
+          // timer"); preserved untouched on every non-Blocked transition.
+          blockInterval: isToBlocked ? resolvedInterval : "$blockInterval",
         },
       },
     ],

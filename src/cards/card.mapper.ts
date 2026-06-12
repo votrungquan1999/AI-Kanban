@@ -33,6 +33,7 @@ export function toClientCard(doc: CardDocument): Card {
     pickedAt: doc.pickedAt ? doc.pickedAt.toISOString() : null,
     finishedAt: doc.finishedAt ? doc.finishedAt.toISOString() : null,
     blockedUntil: doc.blockedUntil ? doc.blockedUntil.toISOString() : null,
+    blockInterval: doc.blockInterval ?? null,
     workspacePath: doc.workspacePath,
     repos: doc.repos,
   };

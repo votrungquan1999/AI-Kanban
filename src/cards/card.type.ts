@@ -92,6 +92,12 @@ export interface CardDocument {
    * schema's `.nullable().optional()` so parse-on-read accepts them.
    */
   blockedUntil?: Date | null;
+  /**
+   * The block countdown duration (ms) the card was last blocked with, replayed
+   * by "Reset timer". Optional + nullable like {@link CardDocument.blockedUntil}:
+   * legacy docs omit it (absent ≠ null), so parse-on-read tolerates them.
+   */
+  blockInterval?: number | null;
   workspacePath: string | null;
   repos: RepoEntry[];
 }
@@ -111,6 +117,8 @@ export interface Card {
   finishedAt: string | null;
   /** ISO timestamp when a Blocked card auto-advances to NeedReview; else null. */
   blockedUntil: string | null;
+  /** Block countdown duration (ms) the card was last blocked with; else null. */
+  blockInterval: number | null;
   workspacePath: string | null;
   repos: RepoEntry[];
 }
