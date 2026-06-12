@@ -8,7 +8,7 @@ import {
   type UpdateTaskInput,
 } from "@/cards/card.schema";
 import { createTask, updateTaskStatus } from "@/cards/card.service";
-import { OriginType, type Status } from "@/cards/card.type";
+import { OriginType, Status } from "@/cards/card.type";
 import { Caller } from "@/cards/transition-policy";
 import type { AddTaskState } from "./add-task.type";
 
@@ -81,5 +81,27 @@ export async function moveCard(
   toStatus: Status,
 ): Promise<void> {
   await updateTaskStatus(cardId, toStatus, { caller: Caller.Ui });
+  revalidatePath("/");
+}
+
+/**
+ * Server Action: moves a card into the Blocked column (human UI override),
+ * which starts its 2h auto-move countdown, then revalidates the board. Backs
+ * the tile + detail-sheet "Block" quick action.
+ * @param cardId - The card's hex id.
+ */
+export async function blockCard(cardId: string): Promise<void> {
+  await updateTaskStatus(cardId, Status.Blocked, { caller: Caller.Ui });
+  revalidatePath("/");
+}
+
+/**
+ * Server Action: keeps an already-blocked card blocked, restarting its 2h
+ * countdown (re-enters Blocked), then revalidates the board. Backs the
+ * "Still Blocked" quick action.
+ * @param cardId - The card's hex id.
+ */
+export async function stillBlockedCard(cardId: string): Promise<void> {
+  await updateTaskStatus(cardId, Status.Blocked, { caller: Caller.Ui });
   revalidatePath("/");
 }

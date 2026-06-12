@@ -1,18 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
-import { OriginType } from "@/cards/card.type";
+import { OriginType, Status } from "@/cards/card.type";
+import { Caller } from "@/cards/transition-policy";
 
-const { createTask } = vi.hoisted(() => ({
+const { createTask, updateTaskStatus } = vi.hoisted(() => ({
   createTask: vi.fn(async () => ({})),
+  updateTaskStatus: vi.fn(async () => ({})),
 }));
 
 vi.mock("@/cards/card.service", () => ({
   createTask,
-  updateTaskStatus: vi.fn(),
+  updateTaskStatus,
 }));
-vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+const { revalidatePath } = vi.hoisted(() => ({ revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
-const { createTaskAction } = await import("./actions");
+const { createTaskAction, blockCard, stillBlockedCard } = await import(
+  "./actions"
+);
 
 describe("createTaskAction", () => {
   it("forwards the selected P0–P3 priority to createTask", async () => {
@@ -30,5 +35,27 @@ describe("createTaskAction", () => {
       origin: { type: OriginType.Manual },
       priority: 2,
     });
+  });
+});
+
+describe("blockCard", () => {
+  it("moves the card into Blocked as the UI caller and revalidates the board", async () => {
+    await blockCard("card-1");
+
+    expect(updateTaskStatus).toHaveBeenCalledWith("card-1", Status.Blocked, {
+      caller: Caller.Ui,
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+  });
+});
+
+describe("stillBlockedCard", () => {
+  it("re-enters Blocked (restarting the timer) and revalidates the board", async () => {
+    await stillBlockedCard("card-2");
+
+    expect(updateTaskStatus).toHaveBeenCalledWith("card-2", Status.Blocked, {
+      caller: Caller.Ui,
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 });
