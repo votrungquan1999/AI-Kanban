@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { type Card, OriginType, Status } from "@/cards/card.type";
 import { ToastProvider } from "@/components/ui/toast";
 import { CardTile } from "./card.ui";
@@ -20,6 +20,7 @@ function makeCard(partial: Partial<Card> = {}): Card {
     updatedAt: "2026-01-01T00:00:00.000Z",
     pickedAt: null,
     finishedAt: null,
+    blockedUntil: null,
     workspacePath: null,
     repos: [],
     ...partial,
@@ -98,5 +99,37 @@ describe("CardTile", () => {
     expect(screen.queryByTestId("tile-description")).not.toBeInTheDocument();
     expect(screen.queryByTestId("tile-repo")).not.toBeInTheDocument();
     expect(screen.queryByTestId("tile-recurring")).not.toBeInTheDocument();
+  });
+
+  it("offers a Block action on an active card and blocks it when clicked", () => {
+    const blockAction = vi.fn();
+    const card = makeCard({ status: Status.Todo });
+    render(
+      <ToastProvider>
+        <CardTile card={card} blockAction={blockAction} />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^block$/i }));
+
+    expect(blockAction).toHaveBeenCalledWith(card.id);
+  });
+
+  it("offers a Still Blocked action on a blocked card and resets it when clicked", () => {
+    const stillBlockedAction = vi.fn();
+    const card = makeCard({ status: Status.Blocked });
+    render(
+      <ToastProvider>
+        <CardTile card={card} stillBlockedAction={stillBlockedAction} />
+      </ToastProvider>,
+    );
+
+    // a blocked card offers "Still Blocked", not "Block"
+    expect(
+      screen.queryByRole("button", { name: /^block$/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /still blocked/i }));
+
+    expect(stillBlockedAction).toHaveBeenCalledWith(card.id);
   });
 });

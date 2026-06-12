@@ -15,7 +15,15 @@ import { CardTile } from "./card.ui";
  * added here.
  * @param card - The card to render and make draggable.
  */
-export function DraggableCard({ card }: { card: Card }) {
+export function DraggableCard({
+  card,
+  blockAction,
+  stillBlockedAction,
+}: {
+  card: Card;
+  blockAction?: (cardId: string) => void;
+  stillBlockedAction?: (cardId: string) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -48,7 +56,11 @@ export function DraggableCard({ card }: { card: Card }) {
       >
         <GripVertical className="size-5" />
       </button>
-      <CardTile card={card} />
+      <CardTile
+        card={card}
+        blockAction={blockAction}
+        stillBlockedAction={stillBlockedAction}
+      />
     </div>
   );
 }
