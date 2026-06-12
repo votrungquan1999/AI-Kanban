@@ -10,6 +10,7 @@ import {
 import { createTask, updateTaskStatus } from "@/cards/card.service";
 import { OriginType, Status } from "@/cards/card.type";
 import { Caller } from "@/cards/transition-policy";
+import { updateDefaultBlockInterval } from "@/settings/settings.service";
 import type { AddTaskState } from "./add-task.type";
 
 /**
@@ -86,22 +87,45 @@ export async function moveCard(
 
 /**
  * Server Action: moves a card into the Blocked column (human UI override),
- * which starts its 2h auto-move countdown, then revalidates the board. Backs
- * the tile + detail-sheet "Block" quick action.
+ * starting its auto-move countdown for the chosen interval, then revalidates
+ * the board. Backs the tile + detail-sheet "Block" quick action. When
+ * `intervalMs` is omitted the service falls back to the card's stored interval,
+ * then the board default.
+ * @param cardId - The card's hex id.
+ * @param intervalMs - The chosen block countdown in ms; optional.
+ */
+export async function blockCard(
+  cardId: string,
+  intervalMs?: number,
+): Promise<void> {
+  await updateTaskStatus(cardId, Status.Blocked, {
+    caller: Caller.Ui,
+    intervalMs,
+  });
+  revalidatePath("/");
+}
+
+/**
+ * Server Action: resets an already-blocked card's timer — re-enters Blocked
+ * with no explicit interval, so the service replays the card's own stored
+ * interval (falling back to the board default for a legacy card) — then
+ * revalidates the board. Backs the "Reset timer" quick action.
  * @param cardId - The card's hex id.
  */
-export async function blockCard(cardId: string): Promise<void> {
+export async function stillBlockedCard(cardId: string): Promise<void> {
   await updateTaskStatus(cardId, Status.Blocked, { caller: Caller.Ui });
   revalidatePath("/");
 }
 
 /**
- * Server Action: keeps an already-blocked card blocked, restarting its 2h
- * countdown (re-enters Blocked), then revalidates the board. Backs the
- * "Still Blocked" quick action.
- * @param cardId - The card's hex id.
+ * Server Action: persists the board-wide DEFAULT block interval (ms) and
+ * revalidates the board so the picker pre-fills the new default. Backs the
+ * board Settings dialog.
+ * @param intervalMs - The new default block interval in milliseconds.
  */
-export async function stillBlockedCard(cardId: string): Promise<void> {
-  await updateTaskStatus(cardId, Status.Blocked, { caller: Caller.Ui });
+export async function updateDefaultIntervalAction(
+  intervalMs: number,
+): Promise<void> {
+  await updateDefaultBlockInterval(intervalMs);
   revalidatePath("/");
 }

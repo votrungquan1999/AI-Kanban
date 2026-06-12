@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OriginType, Status } from "@/cards/card.type";
 import { Caller } from "@/cards/transition-policy";
 
@@ -11,13 +11,24 @@ vi.mock("@/cards/card.service", () => ({
   createTask,
   updateTaskStatus,
 }));
+const { updateDefaultBlockInterval } = vi.hoisted(() => ({
+  updateDefaultBlockInterval: vi.fn(async () => 0),
+}));
+vi.mock("@/settings/settings.service", () => ({ updateDefaultBlockInterval }));
 const { revalidatePath } = vi.hoisted(() => ({ revalidatePath: vi.fn() }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
 
-const { createTaskAction, blockCard, stillBlockedCard } = await import(
-  "./actions"
-);
+const {
+  createTaskAction,
+  blockCard,
+  stillBlockedCard,
+  updateDefaultIntervalAction,
+} = await import("./actions");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("createTaskAction", () => {
   it("forwards the selected P0–P3 priority to createTask", async () => {
@@ -47,12 +58,34 @@ describe("blockCard", () => {
     });
     expect(revalidatePath).toHaveBeenCalledWith("/");
   });
+
+  it("forwards the chosen block interval to updateTaskStatus", async () => {
+    await blockCard("card-3", 3_600_000);
+
+    expect(updateTaskStatus).toHaveBeenCalledWith("card-3", Status.Blocked, {
+      caller: Caller.Ui,
+      intervalMs: 3_600_000,
+    });
+  });
+});
+
+describe("updateDefaultIntervalAction", () => {
+  it("persists the new board default interval and revalidates the board", async () => {
+    await updateDefaultIntervalAction(4 * 60 * 60 * 1000);
+
+    expect(updateDefaultBlockInterval).toHaveBeenCalledWith(4 * 60 * 60 * 1000);
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+  });
 });
 
 describe("stillBlockedCard", () => {
-  it("re-enters Blocked (restarting the timer) and revalidates the board", async () => {
+  it("re-enters Blocked without an interval (so the service replays the card's own) and revalidates", async () => {
     await stillBlockedCard("card-2");
 
+    // Re-enters Blocked with exactly { caller } and NO intervalMs key — the
+    // contrast with blockCard: the service then replays the card's stored
+    // interval rather than a new one. (A real intervalMs would fail this exact
+    // match, distinguishing reset from block.)
     expect(updateTaskStatus).toHaveBeenCalledWith("card-2", Status.Blocked, {
       caller: Caller.Ui,
     });
