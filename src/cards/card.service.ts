@@ -86,6 +86,7 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
     updatedAt: now,
     pickedAt: null,
     finishedAt: null,
+    blockedUntil: null,
     workspacePath: null,
     repos: [],
   };
@@ -173,6 +174,9 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
  * always bumps. When the update matches nothing, a single follow-up read
  * disambiguates: a missing card throws {@link ErrorCode.NotFound}, an existing
  * card on an illegal source status throws {@link ErrorCode.InvalidTransition}.
+ * `blockedUntil` is driven off the same atomic update: entering Blocked (and
+ * re-entering it via "Still Blocked") starts/restarts a 2h server-clock
+ * countdown, leaving Blocked clears it, and any other move preserves it.
  * @param id - The card's hex id.
  * @param status - The target status.
  * @param options - Caller designation (defaults to the UI caller).
@@ -188,11 +192,13 @@ export async function updateTaskStatus(
   const _id = new ObjectId(id);
   const isToInProgress = status === Status.InProgress;
   const isToDone = status === Status.Done;
+  const isToBlocked = status === Status.Blocked;
 
   // Read the pre-image once: it provides the `from` status for the audit event
   // and disambiguates a miss (missing card vs illegal transition). Raw read (not
   // findOneZ) so a drifted doc here cannot mask NotFound/InvalidTransition.
   const preImage = await cardsCollection(db).findOne({ _id });
+  const isFromBlocked = preImage?.status === Status.Blocked;
 
   // UI overrides any→any (bare `_id` filter); other callers are constrained to
   // their legal source statuses via `$in`, so an illegal move matches nothing.
@@ -213,6 +219,15 @@ export async function updateTaskStatus(
             ? { $ifNull: ["$pickedAt", "$$NOW"] }
             : "$pickedAt",
           finishedAt: isToDone ? "$$NOW" : "$finishedAt",
+          // Into Blocked → start a 2h server-clock countdown (also resets it on
+          // "Still Blocked", since that re-enters Blocked). Out of Blocked →
+          // clear it. Otherwise preserve the existing value. isToBlocked is
+          // checked first so a Blocked→Blocked reset wins over the clear branch.
+          blockedUntil: isToBlocked
+            ? { $add: ["$$NOW", 7_200_000] }
+            : isFromBlocked
+              ? null
+              : "$blockedUntil",
         },
       },
     ],

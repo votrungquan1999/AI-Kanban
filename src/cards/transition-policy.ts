@@ -5,6 +5,14 @@ export enum Caller {
   Ui = "ui",
   Scheduler = "scheduler",
   Agent = "agent",
+  /**
+   * Automatic, non-human, non-agent moves — currently the 2h Blocked→NeedReview
+   * auto-advance done by the reconcile-on-read path. Audited distinctly so the
+   * history shows "the system unblocked this," not a human or the agent. The
+   * reconcile uses its own atomic compound-filter update (not the policy), so
+   * `legalFromStatuses` keeps the safe default (no edges) for this caller.
+   */
+  System = "system",
 }
 
 /**
