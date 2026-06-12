@@ -18,6 +18,8 @@ import { DroppableColumn } from "./droppable-column.ui";
 interface BoardProps {
   columns: BoardColumnView[];
   moveAction: (cardId: string, toStatus: Status) => Promise<void>;
+  blockAction: (cardId: string) => Promise<void>;
+  stillBlockedAction: (cardId: string) => Promise<void>;
 }
 
 /**
@@ -27,7 +29,12 @@ interface BoardProps {
  * @param columns - Server-confirmed columns.
  * @param moveAction - Server action that persists a card's new status.
  */
-export function Board({ columns, moveAction }: BoardProps) {
+export function Board({
+  columns,
+  moveAction,
+  blockAction,
+  stillBlockedAction,
+}: BoardProps) {
   const [optimisticColumns, applyMove] = useOptimistic(
     columns,
     applyOptimisticMove,
@@ -58,7 +65,12 @@ export function Board({ columns, moveAction }: BoardProps) {
             count={column.cards.length}
           >
             {column.cards.map((card) => (
-              <DraggableCard key={card.id} card={card} />
+              <DraggableCard
+                key={card.id}
+                card={card}
+                blockAction={blockAction}
+                stillBlockedAction={stillBlockedAction}
+              />
             ))}
           </DroppableColumn>
         ))}

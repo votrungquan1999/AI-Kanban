@@ -1,14 +1,18 @@
+import { reconcileBlockedCards } from "@/cards/card.blocked.service";
 import { getTask, listTasks } from "@/cards/card.service";
 import type { Card } from "@/cards/card.type";
 import {
+  blockCard,
   createTaskAction,
   deleteTaskAction,
   moveCard,
+  stillBlockedCard,
   updateTaskAction,
 } from "./(board)/actions";
 import { AddTaskDialog } from "./(board)/add-task-dialog";
 import { Board } from "./(board)/board";
 import { groupIntoColumns } from "./(board)/board.columns";
+import { BoardAutoRefresh } from "./(board)/board-auto-refresh.ui";
 import { BoardShell } from "./(board)/board-shell.ui";
 import { CardDetail } from "./(board)/card-detail.ui";
 import { newTaskHref } from "./(board)/href";
@@ -44,12 +48,21 @@ interface PageProps {
 export default async function Page({ searchParams }: PageProps) {
   const params = await searchParams;
   const isAddOpen = params.new === "task";
+  // Persist-on-read auto-move: advance any overdue Blocked cards before listing,
+  // so they appear in Need Review on this load and every 5-min refresh.
+  await reconcileBlockedCards();
   const cards = await listTasks();
   const detailCard = await resolveDetailCard(params.card);
 
   return (
     <BoardShell title="AI Kanban" addTaskHref={newTaskHref()}>
-      <Board columns={groupIntoColumns(cards)} moveAction={moveCard} />
+      <BoardAutoRefresh />
+      <Board
+        columns={groupIntoColumns(cards)}
+        moveAction={moveCard}
+        blockAction={blockCard}
+        stillBlockedAction={stillBlockedCard}
+      />
       <AddTaskDialog open={isAddOpen} action={createTaskAction} />
       <CardDetail
         card={detailCard}
@@ -57,6 +70,8 @@ export default async function Page({ searchParams }: PageProps) {
         moveAction={moveCard}
         editAction={updateTaskAction}
         deleteAction={deleteTaskAction}
+        blockAction={blockCard}
+        stillBlockedAction={stillBlockedCard}
       />
     </BoardShell>
   );

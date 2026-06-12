@@ -7,6 +7,8 @@ import { Board } from "./board";
 import type { BoardColumnView } from "./board.type";
 
 const noopMove = vi.fn(async () => {});
+const noopBlock = vi.fn(async () => {});
+const noopStillBlocked = vi.fn(async () => {});
 
 function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
   return {
@@ -17,6 +19,7 @@ function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
     updatedAt: "2026-01-01T00:00:00.000Z",
     pickedAt: null,
     finishedAt: null,
+    blockedUntil: null,
     workspacePath: null,
     repos: [],
     ...partial,
@@ -42,7 +45,12 @@ describe("Board", () => {
 
     render(
       <ToastProvider>
-        <Board columns={columns} moveAction={noopMove} />
+        <Board
+          columns={columns}
+          moveAction={noopMove}
+          blockAction={noopBlock}
+          stillBlockedAction={noopStillBlocked}
+        />
       </ToastProvider>,
     );
 
