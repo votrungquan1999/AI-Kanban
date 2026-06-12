@@ -16,6 +16,7 @@ function makeCard(id: string, status: Status): Card {
     pickedAt: null,
     finishedAt: null,
     blockedUntil: null,
+    blockInterval: null,
     workspacePath: null,
     repos: [],
   };

@@ -18,8 +18,9 @@ import { DroppableColumn } from "./droppable-column.ui";
 interface BoardProps {
   columns: BoardColumnView[];
   moveAction: (cardId: string, toStatus: Status) => Promise<void>;
-  blockAction: (cardId: string) => Promise<void>;
+  blockAction: (cardId: string, intervalMs: number) => Promise<void>;
   stillBlockedAction: (cardId: string) => Promise<void>;
+  defaultIntervalMs: number;
 }
 
 /**
@@ -34,6 +35,7 @@ export function Board({
   moveAction,
   blockAction,
   stillBlockedAction,
+  defaultIntervalMs,
 }: BoardProps) {
   const [optimisticColumns, applyMove] = useOptimistic(
     columns,
@@ -70,6 +72,7 @@ export function Board({
                 card={card}
                 blockAction={blockAction}
                 stillBlockedAction={stillBlockedAction}
+                defaultIntervalMs={defaultIntervalMs}
               />
             ))}
           </DroppableColumn>

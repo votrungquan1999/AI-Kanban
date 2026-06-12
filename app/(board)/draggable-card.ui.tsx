@@ -19,10 +19,12 @@ export function DraggableCard({
   card,
   blockAction,
   stillBlockedAction,
+  defaultIntervalMs,
 }: {
   card: Card;
-  blockAction?: (cardId: string) => void;
+  blockAction?: (cardId: string, intervalMs: number) => void;
   stillBlockedAction?: (cardId: string) => void;
+  defaultIntervalMs?: number;
 }) {
   const {
     attributes,
@@ -60,6 +62,7 @@ export function DraggableCard({
         card={card}
         blockAction={blockAction}
         stillBlockedAction={stillBlockedAction}
+        defaultIntervalMs={defaultIntervalMs}
       />
     </div>
   );

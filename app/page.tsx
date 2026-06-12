@@ -1,12 +1,14 @@
 import { reconcileBlockedCards } from "@/cards/card.blocked.service";
 import { getTask, listTasks } from "@/cards/card.service";
 import type { Card } from "@/cards/card.type";
+import { getDefaultBlockInterval } from "@/settings/settings.service";
 import {
   blockCard,
   createTaskAction,
   deleteTaskAction,
   moveCard,
   stillBlockedCard,
+  updateDefaultIntervalAction,
   updateTaskAction,
 } from "./(board)/actions";
 import { AddTaskDialog } from "./(board)/add-task-dialog";
@@ -53,15 +55,22 @@ export default async function Page({ searchParams }: PageProps) {
   await reconcileBlockedCards();
   const cards = await listTasks();
   const detailCard = await resolveDetailCard(params.card);
+  const defaultIntervalMs = await getDefaultBlockInterval();
 
   return (
-    <BoardShell title="AI Kanban" addTaskHref={newTaskHref()}>
+    <BoardShell
+      title="AI Kanban"
+      addTaskHref={newTaskHref()}
+      defaultIntervalMs={defaultIntervalMs}
+      updateDefaultIntervalAction={updateDefaultIntervalAction}
+    >
       <BoardAutoRefresh />
       <Board
         columns={groupIntoColumns(cards)}
         moveAction={moveCard}
         blockAction={blockCard}
         stillBlockedAction={stillBlockedCard}
+        defaultIntervalMs={defaultIntervalMs}
       />
       <AddTaskDialog open={isAddOpen} action={createTaskAction} />
       <CardDetail
@@ -72,6 +81,7 @@ export default async function Page({ searchParams }: PageProps) {
         deleteAction={deleteTaskAction}
         blockAction={blockCard}
         stillBlockedAction={stillBlockedCard}
+        defaultIntervalMs={defaultIntervalMs}
       />
     </BoardShell>
   );

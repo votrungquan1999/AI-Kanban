@@ -20,6 +20,7 @@ function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
     pickedAt: null,
     finishedAt: null,
     blockedUntil: null,
+    blockInterval: null,
     workspacePath: null,
     repos: [],
     ...partial,
@@ -50,6 +51,7 @@ describe("Board", () => {
           moveAction={noopMove}
           blockAction={noopBlock}
           stillBlockedAction={noopStillBlocked}
+          defaultIntervalMs={7_200_000}
         />
       </ToastProvider>,
     );
