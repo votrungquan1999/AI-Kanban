@@ -6,6 +6,11 @@ export enum Status {
   InProgress = "in_progress",
   NeedReview = "need_review",
   Done = "done",
+  /**
+   * Parked waiting on something. Carries a `blockedUntil` deadline; once it
+   * passes, the card auto-advances to NeedReview on the next board read.
+   */
+  Blocked = "blocked",
   /** Soft-deleted: hidden from the board's default view, not a board column. */
   Archived = "archived",
 }
@@ -81,6 +86,12 @@ export interface CardDocument {
   updatedAt: Date;
   pickedAt: Date | null;
   finishedAt: Date | null;
+  /**
+   * When a Blocked card should auto-advance to NeedReview. Optional (not just
+   * nullable): legacy docs predate the field and omit it entirely — mirrors the
+   * schema's `.nullable().optional()` so parse-on-read accepts them.
+   */
+  blockedUntil?: Date | null;
   workspacePath: string | null;
   repos: RepoEntry[];
 }
@@ -98,6 +109,8 @@ export interface Card {
   updatedAt: string;
   pickedAt: string | null;
   finishedAt: string | null;
+  /** ISO timestamp when a Blocked card auto-advances to NeedReview; else null. */
+  blockedUntil: string | null;
   workspacePath: string | null;
   repos: RepoEntry[];
 }

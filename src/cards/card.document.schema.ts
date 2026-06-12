@@ -66,6 +66,9 @@ export const cardDocumentSchema = z.object({
   updatedAt: z.date(),
   pickedAt: z.date().nullable(),
   finishedAt: z.date().nullable(),
+  // optional AND nullable: legacy docs OMIT the field (absent ≠ null), so
+  // `.optional()` lets them parse; the mapper coerces the absent case to null.
+  blockedUntil: z.date().nullable().optional(),
   workspacePath: z.string().nullable(),
   repos: z.array(repoEntrySchema),
 });
