@@ -39,7 +39,7 @@ export function RecurringTaskTile({
 
       <Link
         href={recurringDetailHref(task.id)}
-        className="text-sm font-medium text-card-foreground hover:underline"
+        className="line-clamp-2 text-sm font-medium wrap-break-word text-card-foreground hover:underline"
       >
         {task.title}
       </Link>

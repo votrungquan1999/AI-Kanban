@@ -38,9 +38,13 @@ function RunHistoryRow({ run, now }: { run: RecurringRun; now: Date }) {
         <span>{formatRelativeAge(run.at, now)}</span>
       </div>
       {isFailure ? (
-        <span className="break-words text-destructive">{run.error}</span>
+        <span className="break-words whitespace-pre-wrap text-destructive">
+          {run.error}
+        </span>
       ) : (
-        <span className="break-words text-foreground">{run.note}</span>
+        <span className="break-words whitespace-pre-wrap text-foreground">
+          {run.note}
+        </span>
       )}
     </div>
   );
