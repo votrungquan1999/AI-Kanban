@@ -18,7 +18,7 @@ PASS=$(pulumi stack output aiKanbanMcpBasicPass --show-secrets)   # NOT --stack 
 printf '%s' "ai-kanban-agent:$PASS" | base64                      # => the <TOKEN>
 ```
 
-**Step 2 — verify the token authenticates** (expect a JSON-RPC line listing 8 tools / `{"tasks":[]}`):
+**Step 2 — verify the token authenticates** (expect a JSON-RPC line listing 9 tools / `{"tasks":[]}`):
 
 ```bash
 curl -s -X POST "https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>" \
@@ -34,7 +34,7 @@ curl -s -X POST "https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>" \
 
 `<PROMPT>` (embeds the token; instructs the agent to drive the queue over curl):
 
-> You are a scheduled run that processes the AI-Kanban recurring-task queue. There is NO MCP connector — call the JSON-RPC endpoint directly over HTTPS with curl (Bash); it is stateless (POST one request, read the `data:` SSE line). URL (secret — never print it): `https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>`. To call tool TOOL with args OBJ: `curl -s -X POST "$URL" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"TOOL","arguments":OBJ}}' | sed -n 's/^data: //p'`. Then: (1) call `list_recurring_due` with `{}`; read `result.structuredContent.tasks`; if empty, exit cleanly. (2) For each task: `start_recurring {"id":"…"}` — on `isError` read `structuredContent.code` and SKIP (ERR_ALREADY_RUNNING / ERR_NOT_DUE / ERR_NOT_FOUND), no retry; else carry out the task's `instruction`; then report exactly once — `complete_recurring {"id":"…","note":"…"}` on success or `fail_recurring {"id":"…","error":"…"}` on failure. A clean exit is NOT success — you MUST report every claimed task. Isolate per-task failures. Never print the token. Only act on ids from `list_recurring_due`.
+> You are a scheduled run that processes the AI-Kanban recurring-task queue. There is NO MCP connector — call the JSON-RPC endpoint directly over HTTPS with curl (Bash); it is stateless (POST one request, read the `data:` SSE line). URL (secret — never print it): `https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>`. To call tool TOOL with args OBJ: `curl -s -X POST "$URL" -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"TOOL","arguments":OBJ}}' | sed -n 's/^data: //p'`. Then: (1) call `list_recurring_due` with `{}`; read `result.structuredContent.tasks`; if empty, exit cleanly. (2) For each task: `start_recurring {"id":"…"}` — on `isError` read `structuredContent.code` and SKIP (ERR_ALREADY_RUNNING / ERR_NOT_DUE / ERR_NOT_FOUND), no retry; else, if the instruction builds on earlier runs, first call `list_recurring_runs {"id":"…"}` (latest runs newest-first, default 5) and read the latest note as your continuity memory; then carry out the task's `instruction`; then report exactly once — `complete_recurring {"id":"…","note":"…"}` on success or `fail_recurring {"id":"…","error":"…"}` on failure. A clean exit is NOT success — you MUST report every claimed task. Isolate per-task failures. Never print the token. Only act on ids from `list_recurring_due`.
 
 **Step 4 — test + view.** `RemoteTrigger` `action: "run"` to fire once now; transcripts at `https://claude.ai/code/routines/<trigger_id>` (the API does not return run output). Add a recurring task on `/recurring` and Run-now to exercise a real claim→complete.
 
@@ -42,7 +42,7 @@ curl -s -X POST "https://ai-kanban.quanvo.dev/api/mcp?token=<TOKEN>" \
 
 ## 1. Register the MCP connector (one-time)
 
-The recurring queue tools (`list_recurring_due`, `start_recurring`, `complete_recurring`, `fail_recurring`) register through the **same** `ai-kanban-dispatch` connector as the existing card dispatch tools — there is no separate connector. There are two registration paths depending on **where the connector lives**, because they authenticate differently:
+The recurring queue tools (`list_recurring_due`, `start_recurring`, `list_recurring_runs`, `complete_recurring`, `fail_recurring`) register through the **same** `ai-kanban-dispatch` connector as the existing card dispatch tools — there is no separate connector. There are two registration paths depending on **where the connector lives**, because they authenticate differently:
 
 **A. A scheduled routine (cloud) — use the URL `?token=` path.** A routine runs in Claude's cloud sandbox and uses connectors registered in your **claude.ai account**, not local CLI config. A claude.ai custom connector accepts only a URL — it cannot send a custom `Authorization` header — so it authenticates via the `?token=` query-param path on `/api/mcp`. In **claude.ai → Settings → Connectors → Add custom connector**, register:
 
@@ -63,7 +63,7 @@ claude mcp add --transport http ai-kanban-dispatch https://<app>/api/mcp \
 
 - `<base64 user:pass>` is `base64(MCP_BASIC_USER:MCP_BASIC_PASS)` — the Basic-auth gate on `/api/mcp`. (This local-CLI registration is **not** visible to a cloud routine — that is why path A exists.)
 
-Either way, the four recurring tools appear under the `mcp__ai-kanban-dispatch__*` prefix, alongside the four card tools (eight total).
+Either way, the five recurring tools appear under the `mcp__ai-kanban-dispatch__*` prefix, alongside the four card tools (nine total).
 
 ## 2. Create the scheduled routine
 
@@ -71,7 +71,7 @@ Create one scheduled routine (via the `/schedule` skill or the Claude routines U
 
 Routine prompt (points at the committed skill):
 
-> Run the AI-Kanban recurring queue: follow the `run-recurring-queue` skill. Call `list_recurring_due`; for each due task, `start_recurring(id)`, carry out its `instruction`, then `complete_recurring(id, { note })` on success or `fail_recurring(id, { error })` on failure. Skip any task whose claim returns an error. If nothing is due, exit.
+> Run the AI-Kanban recurring queue: follow the `run-recurring-queue` skill. Call `list_recurring_due`; for each due task, `start_recurring(id)`, optionally `list_recurring_runs(id)` to read recent run notes for continuity, carry out its `instruction`, then `complete_recurring(id, { note })` on success or `fail_recurring(id, { error })` on failure — carrying any state future runs need forward in the note. Skip any task whose claim returns an error. If nothing is due, exit.
 
 Pick a cadence at or above the 1-hour floor (see caveats). Hourly is a reasonable default and aligns with the `hourly` schedule preset.
 
@@ -79,7 +79,7 @@ Pick a cadence at or above the 1-hour floor (see caveats). Hourly is a reasonabl
 
 1. `list_recurring_due()` → `{ tasks }` (already filtered to enabled + idle + due).
 2. For each task: `start_recurring(id)` (atomic claim). On an error result, read `structuredContent.code` and skip — `ERR_ALREADY_RUNNING`, `ERR_NOT_DUE`, or `ERR_NOT_FOUND`.
-3. Follow the task's `instruction`.
+3. Optionally `list_recurring_runs(id)` when the instruction builds on earlier runs — latest run notes, newest first (default 5, max 20) — then follow the task's `instruction`.
 4. `complete_recurring(id, { note })` on success, or `fail_recurring(id, { error })` on failure.
 5. Continue until the list is exhausted.
 

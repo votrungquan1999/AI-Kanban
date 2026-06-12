@@ -38,7 +38,14 @@ No identity, id is a runtime argument:
 - `set_status(id, status)` → `updateTaskStatus` as `Caller.Agent`.
 - `set_workspace(id, {workspacePath, repos})` → `setWorkspace`. **Gotcha: PUT semantics** — the agent must send the *full* repo set each call or it wipes the others.
 
-The tool set is registered by a single `registerDispatchTools(server)` (`dispatch-server.ts`) so it is **shared across transports** (the stdio factory and the HTTP route both call it — one source of truth for the four tools).
+Plus the five recurring-queue tools:
+- `list_recurring_due()` → `listRecurringDue` (enabled + idle + due tasks, under a `tasks` key).
+- `start_recurring(id)` → `startRecurring` (atomic claim; loses surface as `ERR_ALREADY_RUNNING` / `ERR_NOT_DUE` / `ERR_NOT_FOUND` error results).
+- `list_recurring_runs(id, limit?)` → `listLatestRecurringRuns` (latest runs **newest first** under a `runs` key — the task's run-to-run memory; default 5, max 20 enforced at the Zod schema boundary; unknown id → `ERR_NOT_FOUND`, existing-but-runless task → empty list).
+- `complete_recurring(id, note?)` → `completeRecurring` (back to `idle`, rolls `nextDueAt` forward; the note is what a future run reads via `list_recurring_runs`).
+- `fail_recurring(id, error)` → `failRecurring` (parks the task `failed` until an operator resets it).
+
+The tool set is registered by a single `registerDispatchTools(server)` (`dispatch-server.ts`) so it is **shared across transports** (the stdio factory and the HTTP route both call it — one source of truth for all nine dispatch tools).
 
 **Two transports for the same dispatch server:**
 - **stdio** — `src/mcp/dispatch-index.ts` (reads no env; for a locally-spawned session).
