@@ -13,7 +13,7 @@ For each task, Claude Code MUST double-check:
 
 - ALWAYS check all applicable rules before making any changes.
 - ALWAYS explain which rules were applied in the output.
-- MUST keep files under **300 lines** for AI context management.
+- MUST keep file size small and reasonable for AI context management.
 - NEVER require running/building the server to validate output.
 - NEVER run `npm run build` or `npm run dev` after completing tasks, the user will handle this.
 - ALWAYS use `npm install` to install packages. NEVER add packages directly to `package.json`.
@@ -52,8 +52,10 @@ For each task, Claude Code MUST double-check:
 ## Test-First Enforcement
 
 - The test-run GATE applies to BOTH modes: BDD scenarios (outer, behavior-level loop) and TDD (inner, unit/algorithm-level loop). BDD is also test-first — test-first never conflicts with BDD.
-- NEVER write implementation code before running the test.
-- ONE at a time: one scenario (BDD) or one test (TDD). Run it. See the result. Then decide whether to implement.
+- NEVER write behavior logic before running the test. Structural scaffolding (route, empty handler, field, empty function returning a default) MUST be in place before the run so the test can only fail behaviorally.
+- A red run only counts when a behavior assertion fails. Structural failures (404 route not registered, missing field/column/import) are NOT valid reds — they validate nothing. Never manufacture one to follow ritual.
+- If no meaningful red is possible (the minimal scaffolding to avoid structural failure already IS the implementation), write just enough code to pass first and expect green from the first run — state this explicitly.
+- ONE at a time: one scenario (BDD) or one test (TDD). Run it. See the result. Then decide what comes next.
 - The test run is a GATE — skipping it is a rule violation in either mode.
 
 ## Planning Mode

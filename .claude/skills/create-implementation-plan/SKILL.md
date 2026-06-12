@@ -21,6 +21,15 @@ Ensures significant changes are well-thought-out and reviewed before implementat
 
 ## Instructions
 
+### Step 0: Establish the Task Workspace
+
+**Before writing any notes or the plan document**, decide where artifacts go:
+
+- **If a caller gave you a working directory** (e.g. the orchestrator passes `<ws>` = `./tmp/<identifier>/`), use it as-is — write the plan there and skip the rest of this step.
+- **Otherwise**, ask the user for a **task identifier** — a ticket id (e.g. `JIRA-123`) or any short label. If they have none, **derive a short kebab-case slug** from the request and **confirm it**. Then use `<ws>` = `./tmp/<identifier>/` and create that directory.
+
+Throughout this skill, `<ws>` refers to that working directory. Scoping artifacts under `./tmp/<identifier>/` lets multiple planning tasks coexist without overwriting each other.
+
 ### Step 1: Research the Codebase
 
 **Goal:** Understand the existing implementation before planning.
@@ -67,6 +76,8 @@ For complex designs, consider using the `@structured-brainstorming` workflow to 
 
 ### Step 4: Define Observable Behaviors & Test Cases
 
+**Identify the client first.** Before listing any behavior, name the client/stakeholder of the feature. By DEFAULT this is a business or end-user stakeholder. Frame every behavior as an outcome that stakeholder would recognize and care about, in their words — business/end-user language is the default. ONLY when the user explicitly states the client is a developer or an internal/consuming system (e.g. a library/API contract) may you phrase behaviors in developer terms.
+
 List the behaviors the system should exhibit, ordered by implementation priority. Each behavior becomes one BDD scenario step — a strictly isolated test-first cycle.
 
 **CRITICAL: ONE TEST AT A TIME**
@@ -74,14 +85,22 @@ Never batch behaviors or write multiple tests at once. Each step must be exactly
 
 Each behavior must be:
 - **Observable** — something a user or system can verify externally
-- **Not a code task** — describe what the system does, not how
+- **In the client's language** — describe the outcome the stakeholder sees, never implementation mechanics (schemas, fields, tables, queries, error codes, function/method/class names, the linter, CI, HTTP status, etc.)
+
+**Litmus test:** Read the behavior aloud to the stakeholder. Would they recognize it as something they asked for and care about? If it mentions code or internal mechanics, it FAILS — rewrite before proceeding.
 
 > ✅ `User sees trending markets at the top of the list`
 > ✅ `Valid inputs are persisted to the standard settings`
 > ✅ `Markets with score below threshold are excluded from trending`
+> ✅ `A user is never shown a corrupted card — a damaged card is blocked and surfaced as an error instead of displayed` (client: end-user)
+> ✅ `A user sees their tasks listed in the expected order` (client: end-user)
+> ✅ `Code that doesn't meet the team's quality bar is caught automatically before it can merge` (client: the team)
 > ❌ `Add isTrending field to Market model`
 > ❌ `Add StandardSettings interface to types file`
 > ❌ `Write SQL query for trending markets`
+> ❌ `Reading a card whose stored shape violates the schema throws ERR_SCHEMA_DRIFT and logs the drift`
+> ❌ `Migrate listTasks onto findManyZ and assert parsed shape and order`
+> ❌ `Running the linter reports no violations on a clean repo`
 
 For each behavior, plan the test-first cycle:
 ```markdown
@@ -101,7 +120,7 @@ Group quality checkpoints after every 2-3 behaviors:
 
 ### Step 5: Write the Plan Document
 
-Write the plan to a file in the project (e.g., `implementation-plan.md`) using this format:
+Write the plan to `<ws>/implementation-plan.md` (the task workspace from Step 0) using this format:
 
 ```markdown
 # [Goal Description]
@@ -134,7 +153,9 @@ Brief description of the problem and what the change accomplishes.
 
 ### Step 6: Request Review
 
-**MUST pause for user review.** Present the plan and wait for approval before any implementation begins.
+**MUST pause for user review.** Present the implementation plan document (`<ws>/implementation-plan.md`) — the rich plan with Technical Design + Behaviors — and wait for approval before any implementation begins.
+
+**NEVER present a steps file for review.** A derived steps file (e.g. `<ws>/PLAN_STEPS.md`) is workflow-state for the BDD scenario loop, not the artifact the user reviews. Write it only AFTER the plan is approved, and do not ask the user to review it.
 
 ---
 

@@ -47,7 +47,7 @@ description: 'Claude Code brainstorming: AI agent patterns and structured proble
 - Capture questions, answers, and decisions made at each step
 - Maintain clear structure following the zoom-out approach
 - Include diagrams, lists, and structured information as needed
-- Each document files should range from 200-300 lines so that the agent and reader can easily understand the context and the solution.
+- Each document file should be small and reasonable in size so that the agent and reader can easily understand the context and the solution.
 - Since the brainstorming document is split into multiple files, should have links to refer to other files to make it easier to navigate. especially when talk about some stuff that is mentioned in other files.
 
 ## 6. Best Practices

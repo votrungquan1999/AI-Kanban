@@ -2,9 +2,11 @@
 
 Periodic quality check that reviews recent tests and implementation for issues.
 
+> **Task workspace:** State files live in the task working directory `<ws>` (`./tmp/<identifier>/`) given in your prompt.
+
 ## Input
 
-Read `PLAN_STEPS.md` to identify which steps were completed since the last quality check.
+Read `<ws>/PLAN_STEPS.md` to identify which steps were completed since the last quality check.
 
 ## Execution
 

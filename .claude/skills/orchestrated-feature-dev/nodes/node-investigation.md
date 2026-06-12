@@ -1,18 +1,22 @@
 # Node: Investigation
 
-Deep-dive investigation of a single plan step. Multiple instances run in parallel — one per step — each with full plan context.
+Deep-dive investigation of assigned plan steps. A few instances run in parallel — each assigned a **batch of related steps** (grouped by shared files/module) — each with full plan context.
+
+> **Task workspace:** All state files live in the task working directory `<ws>` (`./tmp/<identifier>/`) given in your prompt. Every state-file path below is relative to `<ws>`.
 
 ## Input
 
-- Read `implementation-plan.md` for the **full plan** (all steps, technical design, architecture decisions)
-- Read `PLAN_STEPS.md` for the step list
-- You are assigned **Step [N]** — investigate this step only, but use the full plan to understand how it relates to other steps
+- Read `<ws>/implementation-plan.md` for the **full plan** (all steps, technical design, architecture decisions) — read it ONCE and reuse it for all your assigned steps
+- Read `<ws>/PLAN_STEPS.md` for the step list
+- You are assigned **one or more steps** — investigate ONLY those, one at a time, but use the full plan to understand how each relates to other steps. Files shared between your assigned steps need to be read only once.
 
 ## Execution
 
+**Run this procedure for EACH assigned step, one at a time:**
+
 ### 1. Understand Your Step in Context
 
-Read your assigned step's behavior description. Then read the full plan to understand:
+Read the step's behavior description. Then use the full plan to understand:
 - What other steps depend on this one
 - What this step depends on
 - How this step fits into the overall feature
@@ -56,7 +60,7 @@ Compare what the plan says against what the codebase actually has:
 
 ## Output
 
-Write findings to `INVESTIGATION_STEP_[N].md` in the project root:
+For EACH assigned step N, write that step's findings to its own `<ws>/INVESTIGATION_STEP_[N].md` (one file per step — the implementation loop consumes them per step):
 
 ```markdown
 # Investigation: Step [N] — [behavior description]

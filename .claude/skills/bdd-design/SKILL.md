@@ -11,9 +11,10 @@ Behavior-Driven Development: define behavior through scenarios first, then imple
 
 1. **Scenarios First** - Write behavior scenarios before any implementation
 2. **One Scenario at a Time** - Write one scenario → run to see result → implement → verify → next
-3. **User Behavior Focus** - Scenarios describe what the user/system does, not how it's coded
-4. **Living Documentation** - Scenarios serve as both tests and documentation
-5. **Ubiquitous Language** - Use domain language that stakeholders understand
+3. **Meaningful Red** - A red run only counts when a behavior assertion fails; structural failures (404, missing route/field) validate nothing — scaffold first, or expect green from the start when no real red is possible
+4. **Client's Language First** - Identify the client/stakeholder first (business/end-user by default), then write each behavior in their language and value — never implementation mechanics (see [Write Behaviors in the Client's Language](#write-behaviors-in-the-clients-language))
+5. **Living Documentation** - Scenarios serve as both tests and documentation
+6. **Ubiquitous Language** - Use domain language that stakeholders understand
 
 ---
 
@@ -50,6 +51,31 @@ Write scenarios describing behavior using three stages:
 - Key edge cases identified?
 - Error/failure scenarios included?
 - Scenarios use domain language, not implementation language?
+- Does every scenario read in the client's language (no code/internals)?
+
+---
+
+## Write Behaviors in the Client's Language
+
+**Identify the client first.** Before listing any behavior, name the client/stakeholder of the feature. By DEFAULT this is a business or end-user stakeholder.
+
+**Business/end-user language is the default.** Frame every behavior as an outcome that stakeholder would recognize and care about, in their words. Tie behaviors to value via "As a [stakeholder], I want [capability], So that [value]".
+
+**No implementation mechanics in a behavior.** A behavior must NOT name code artifacts or internals: schemas, fields, tables, queries, error codes, function/method/class names, the linter, CI, HTTP status, etc. If it does, it is written at the wrong altitude — rewrite it as the outcome the stakeholder sees.
+
+**Litmus test:** Read the behavior aloud to the stakeholder. Would they recognize it as something they asked for and care about? If it mentions code or internal mechanics, it FAILS — rewrite before proceeding.
+
+**Escape hatch:** ONLY when the user explicitly states the client is a developer or an internal/consuming system (e.g. a library/API contract) may you phrase behaviors in developer terms. Otherwise, always trace to business/end-user value.
+
+**Reframing examples** (client shown in parentheses):
+- ❌ "Reading a card whose stored shape violates the schema throws ERR_SCHEMA_DRIFT and logs the drift"
+  ✅ "A user is never shown a corrupted card — a damaged card is blocked and surfaced as an error instead of displayed" (client: end-user)
+- ❌ "Migrate listTasks onto findManyZ and assert parsed shape and order"
+  ✅ "A user sees their tasks listed in the expected order" (client: end-user)
+- ❌ "Running the linter reports no violations on a clean repo"
+  ✅ "Code that doesn't meet the team's quality bar is caught automatically before it can merge" (client: the team)
+- ❌ "Add isTrending field to the Market model"
+  ✅ "A trader sees trending markets at the top of the list" (client: trader)
 
 ---
 
@@ -91,14 +117,18 @@ Never batch behaviors or write multiple tests at once. Each step must be exactly
 
 **`describe` is for grouping related tests — not for labeling a single test.** Never wrap a single `it()` in its own `describe` just to add a prefix.
 
-### 🚫 Step 2: GATE — Run the Test (Before Implementation)
+### 🚫 Step 2: GATE — Run the Test (Before Behavior Logic)
 
 1. **Check `package.json` scripts** first to see if there's an existing command for running tests (e.g., `npm test`, `npm run test:unit`). Use the project's defined command instead of crafting your own.
-2. Run the new scenario test BEFORE writing any implementation
-3. If it **fails** → proceed to Step 3 (implement)
-4. If it **already passes** → behavior is already covered, skip Step 3, go back to Step 1
+2. **Scaffold the structure the test touches first** (register the route, add the field, create the empty handler returning a default) so the run can only fail on the behavior assertion. Scaffolding contains no behavior logic.
+3. Run the new scenario test BEFORE writing any behavior logic
+4. If it **fails on the behavior assertion** → real red, proceed to Step 3 (implement)
+5. If it **fails structurally** (404 route not registered, missing field/column, import error) → that red validates nothing; fix the scaffolding and run again
+6. If it **already passes** → behavior is already covered, skip Step 3, go back to Step 1
 
-**This gate is NON-NEGOTIABLE. Writing implementation before running the test = violation.**
+**When no meaningful red is possible** — the minimal scaffolding needed to avoid a structural failure already IS the implementation (e.g., a field that just renders, a trivial pass-through endpoint) — write just enough code to pass first and expect **green from the first run**. State this explicitly. Do NOT manufacture a useless red (asserting against a 404 or a missing field) just to follow the ritual.
+
+**This gate is NON-NEGOTIABLE. Writing behavior logic before running the test = violation.**
 
 ### Step 3: Minimum Implementation
 
@@ -160,7 +190,8 @@ After all scenarios pass:
 - ❌ Don't write implementation-specific scenarios ("When the database query returns...")
 - ❌ Don't write multiple scenarios before implementing any
 - ❌ Don't skip the test run — always run the test before implementing
-- ❌ Don't write implementation code before seeing the test result
+- ❌ Don't write behavior logic before seeing the test result (structural scaffolding is allowed and encouraged)
+- ❌ Don't treat a structural failure (404, missing route/field) as a valid red — only a failing behavior assertion validates anything
 
 ---
 

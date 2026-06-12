@@ -2,6 +2,8 @@
 
 Focused context-gathering phase. Read the codebase to understand patterns, architecture, and affected areas.
 
+> **Task workspace:** All state files live in the task working directory `<ws>` (`./tmp/<identifier>/`) given in your prompt. Every state-file path below is relative to `<ws>`.
+
 ## Input
 
 Read the user's feature request from the conversation context.
@@ -39,9 +41,9 @@ Read the user's feature request from the conversation context.
 
 ## Output
 
-Write findings to `RESEARCH_OUTPUT.md` in the project root.
+Write findings to `<ws>/RESEARCH_OUTPUT.md`.
 
-If you were spawned as a **targeted follow-up agent** (you were given a specific investigation item), instead write to the `RESEARCH_FOLLOWUP_[id].md` file named in your prompt, using the same section structure below. Resolve your assigned item fully; if it uncovers further code-answerable threads, list them under "Follow-up Investigations Needed" so the orchestrator can spawn another round.
+If you were spawned as a **targeted follow-up agent** (you were given a specific investigation item), instead write to the `<ws>/RESEARCH_FOLLOWUP_[id].md` file named in your prompt, using the same section structure below. Resolve your assigned item fully; if it uncovers further code-answerable threads, list them under "Follow-up Investigations Needed" so the orchestrator can spawn another round.
 
 ```markdown
 # Research Output

@@ -2,16 +2,18 @@
 
 Generate a final summary of the entire orchestrated workflow execution.
 
+> **Task workspace:** All state files live in the task working directory `<ws>` (`./tmp/<identifier>/`) given in your prompt. Every state-file path below is relative to `<ws>`.
+
 ## Input
 
 Read all workflow state files:
-- `RESEARCH_OUTPUT.md`
-- `PLAN_STEPS.md`
-- `IMPLEMENTATION_PROGRESS.md`
+- `<ws>/RESEARCH_OUTPUT.md`
+- `<ws>/PLAN_STEPS.md`
+- `<ws>/IMPLEMENTATION_PROGRESS.md`
 
 ## Execution
 
-1. **Count completed steps** from `PLAN_STEPS.md` (all with status `done`)
+1. **Count completed steps** from `<ws>/PLAN_STEPS.md` (all with status `done`)
 2. **Gather quality gate results** from all quality checkpoints
 3. **List all files changed** across all steps
 4. **Run the full test suite** one final time to confirm everything passes
@@ -52,9 +54,6 @@ Present to the user:
 
 ## Cleanup
 
-After presenting the summary, remind the user that the following workflow state files can be cleaned up:
-- `RESEARCH_OUTPUT.md`
-- `PLAN_STEPS.md`
-- `IMPLEMENTATION_PROGRESS.md`
+After presenting the summary, remind the user that the entire task workspace `<ws>` (`./tmp/<identifier>/`) can be cleaned up once the feature is complete — it contains `RESEARCH_OUTPUT.md`, `PLAN_STEPS.md`, `implementation-plan.md`, `IMPLEMENTATION_PROGRESS.md`, and the per-step investigation/validation files.
 
-These should be added to `.gitignore` or deleted after the feature is complete.
+`./tmp/` should be in `.gitignore`; delete `<ws>` once the feature is merged.

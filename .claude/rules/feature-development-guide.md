@@ -14,7 +14,8 @@ This document outlines the recommended approach for implementing features and ta
 4. **Track Progress** - Write progress to a file for context switching and interruptions
 5. **Incremental Progress** - Complete one step fully before moving to the next
 6. **Test Each Step** - Prove each step works before building on top of it
-7. **One Test at a Time** - Write exactly one test, see it fail, make it pass, then move to the next test. This ensures incremental validation and prevents skipping test coverage.
+7. **One Test at a Time** - Write exactly one test, run it, see a meaningful result, make it pass, then move to the next test. This ensures incremental validation and prevents skipping test coverage.
+8. **Meaningful Red** - A red run only counts when a behavior assertion fails. Structural failures (404 route not registered, missing field/import) validate nothing — scaffold structure before running, or expect green from the start when no real red is possible.
 
 ---
 
@@ -105,17 +106,18 @@ Create a file (e.g., `IMPLEMENTATION_PROGRESS.md`) to track completed steps. Add
 **Then, for EACH test scenario, follow this iterative process:**
 
 3. **Write ONE test** - Write exactly 1 test at a time (you can start with an empty test that just has a description). **CRITICAL: NEVER write multiple tests at once.**
-4. **Run the test** - Run the test to verify it fails (this confirms the test is actually testing something)
-5. **Implement code** - Write the minimum code needed to make this ONE test pass
-6. **Run the test again** - Verify the test now passes
-7. **Repeat** - If more test scenarios remain, go back to step 3 for the next test. Continue until all test scenarios are written and passing.
+4. **Scaffold structure** - Put in place whatever structure the test touches (route, empty handler, field, empty function returning a default) so the run can only fail on the behavior assertion. Scaffolding contains no behavior logic.
+5. **Run the test** - Expect a **meaningful failure**: the behavior assertion fails. A structural error (404 route not registered, missing field, import error) is NOT a valid red — it validates nothing; fix the scaffolding and run again. If no meaningful red is possible (the scaffolding IS the implementation), write just enough code to pass first and expect green from the first run — note this explicitly.
+6. **Implement code** - Write the minimum code needed to make this ONE test pass
+7. **Run the test again** - Verify the test now passes
+8. **Repeat** - If more test scenarios remain, go back to step 3 for the next test. Continue until all test scenarios are written and passing.
 
 **After all tests are passing:**
 
-8. **Run linting** - Check for code quality issues and fix any problems
-9. **Verify** - All tests pass, acceptance criteria met
-10. **Mark step as complete** - Update progress file with ✅ Done, test list, and notes
-11. **Move to next step** - Only after current step is complete
+9. **Run linting** - Check for code quality issues and fix any problems
+10. **Verify** - All tests pass, acceptance criteria met
+11. **Mark step as complete** - Update progress file with ✅ Done, test list, and notes
+12. **Move to next step** - Only after current step is complete
 
 ### When Writing Tests
 
@@ -125,7 +127,7 @@ Create a file (e.g., `IMPLEMENTATION_PROGRESS.md`) to track completed steps. Add
 
 Follow the guidelines in the 4 Pillars document when defining test scenarios and writing tests.
 
-**Key TDD Principle:** Always write ONE test at a time, see it fail, make it pass, then move to the next test. This ensures you're building incrementally and each test is actually validating behavior.
+**Key TDD Principle:** Always write ONE test at a time, run it, see a meaningful result (real red on a behavior assertion, or expected green when no real red is possible), make/keep it passing, then move to the next test. This ensures you're building incrementally and each test is actually validating behavior.
 
 ---
 

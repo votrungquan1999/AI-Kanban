@@ -1,19 +1,22 @@
 # Node: Validation
 
-Post-implementation validation of a single plan step. Multiple instances run in parallel — one per step — each with full plan and implementation context.
+Post-implementation validation of assigned plan steps. A few instances run in parallel — each assigned a **batch of related steps** (grouped by shared files) — each with the plan and implementation context it needs.
+
+> **Task workspace:** All state files live in the task working directory `<ws>` (`./tmp/<identifier>/`) given in your prompt. Every state-file path below is relative to `<ws>`.
 
 ## Input
 
-- Read `implementation-plan.md` for the **full plan**
-- Read `PLAN_STEPS.md` for step statuses
-- Read `IMPLEMENTATION_PROGRESS.md` for implementation details across all steps
-- You are assigned **Step [N]** — validate this step only, but use the full context to check cross-step consistency
+- Read `<ws>/implementation-plan.md` and `<ws>/PLAN_STEPS.md`, focusing on the sections relevant to your assigned steps — read them ONCE and reuse for all your steps
+- In `<ws>/IMPLEMENTATION_PROGRESS.md`, read your assigned steps' entries plus the entries of steps that share the same files (needed for cross-step checks) — not the whole file
+- You are assigned **one or more steps** — validate ONLY those, one at a time. Files shared between your assigned steps need to be read only once.
 
 ## Execution
 
+**Run this procedure for EACH assigned step, one at a time:**
+
 ### 1. Verify Implementation Matches Plan
 
-Read the files changed for your step (listed in `IMPLEMENTATION_PROGRESS.md`):
+Read the files changed for the step (listed in `<ws>/IMPLEMENTATION_PROGRESS.md`):
 - Does the implementation actually deliver the planned behavior?
 - Are there deviations from the plan that weren't documented?
 - Was the technical approach from the plan followed?
@@ -48,7 +51,7 @@ Quick review of the implementation:
 
 ## Output
 
-Write findings to `VALIDATION_STEP_[N].md` in the project root:
+For EACH assigned step N, write that step's findings to its own `<ws>/VALIDATION_STEP_[N].md` (one file per step):
 
 ```markdown
 # Validation: Step [N] — [behavior description]

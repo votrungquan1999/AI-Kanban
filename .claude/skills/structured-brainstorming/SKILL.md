@@ -17,9 +17,20 @@ This Skill provides a structured approach to brainstorming and problem-solving u
 
 ---
 
+## Phase 0: Establish the Task Workspace
+
+**Before creating any brainstorming document**, establish where artifacts go:
+
+- **If a caller gave you a working directory** (e.g. `<ws>` = `./tmp/<identifier>/`), use it.
+- **Otherwise**, ask the user for a **task identifier** — a ticket id (e.g. `JIRA-123`) or any short label. If they have none, **derive a short kebab-case slug** from the topic and **confirm it**. Then use `<ws>` = `./tmp/<identifier>/` and create that directory.
+
+Throughout this skill, `<ws>` refers to that working directory. Scoping brainstorm docs under `./tmp/<identifier>/` lets multiple brainstorms run in parallel without colliding.
+
+---
+
 ## Phase 1: Problem Definition
 
-**Create a brainstorming document** (e.g., `brainstorm-[topic].md`)
+**Create a brainstorming document** at `<ws>/brainstorm-[topic].md` (the task workspace from Phase 0)
 
 **Include:**
 - Clear problem statement at the top
@@ -31,7 +42,7 @@ This Skill provides a structured approach to brainstorming and problem-solving u
 **Document Structure:**
 - Use markdown sections for organization
 - Use markdown links to refer between sections for easy navigation
-- Keep documents 200-300 lines for readability
+- Keep documents small and reasonable in size for readability
 
 ---
 
@@ -105,9 +116,9 @@ Questions to cover:
 ## Documentation Best Practices
 
 ### File Organization
-- Create separate `.md` files for complex brainstorms
-- Split into multiple files when a single file exceeds 300 lines
-- Use descriptive filenames: `brainstorm-authentication-approach.md`
+- Create separate `.md` files for complex brainstorms, all inside the task workspace `<ws>`
+- Split into multiple files when a single file grows too large
+- Use descriptive filenames: `<ws>/brainstorm-authentication-approach.md`
 - Link between files using markdown links
 
 ### Content Structure
@@ -146,7 +157,7 @@ Current situation, background, what led here
 ```
 
 ### Keep Documents Modular
-- Each file: 200-300 lines for easy comprehension
+- Each file: small and reasonable in size for easy comprehension
 - Cross-reference with markdown links
 - Example: `For authentication details, see [auth-design.md](./auth-design.md)`
 
@@ -207,7 +218,8 @@ When helpful, use:
 
 ## Summary Workflow
 
-1. **Create brainstorming document**
+0. **Establish the task workspace** `<ws>` = `./tmp/<identifier>/` (ask for/confirm an identifier first)
+1. **Create brainstorming document** under `<ws>`
 2. **Define problem clearly** at the top
 3. **Ask clarifying questions** until problem is well-understood
 4. **Start zoomed out** - widest possible view
@@ -216,7 +228,7 @@ When helpful, use:
 7. **Review and refine** solutions
 8. **Zoom in one level** and repeat
 9. **Iterate until reaching implementation details**
-10. **Split into multiple files** if document exceeds 300 lines
+10. **Split into multiple files** if the document grows too large
 11. **Use markdown links** to connect related documents
 
 **Remember:** Start wide, zoom in progressively, iterate at each layer, document everything, and keep files modular for readability.
