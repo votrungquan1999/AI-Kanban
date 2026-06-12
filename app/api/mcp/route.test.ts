@@ -77,7 +77,7 @@ describe("POST /api/mcp — auth gate", () => {
 });
 
 describe("POST /api/mcp — tools/list", () => {
-  it("lists exactly the eight dispatch tools for an authenticated caller", async () => {
+  it("lists exactly the nine dispatch tools for an authenticated caller", async () => {
     // Given valid Basic credentials
     process.env.MCP_BASIC_USER = "mcp-user";
     process.env.MCP_BASIC_PASS = "mcp-pass";
@@ -101,7 +101,7 @@ describe("POST /api/mcp — tools/list", () => {
       }),
     );
 
-    // Then exactly the eight dispatch tools are advertised — nothing more
+    // Then exactly the nine dispatch tools are advertised — nothing more
     const message = await parseMcpResponse(res);
     const names = (message.result?.tools ?? []).map((tool) => tool.name);
     expect(names.sort()).toEqual([
@@ -110,6 +110,7 @@ describe("POST /api/mcp — tools/list", () => {
       "fail_recurring",
       "get_card_context",
       "list_recurring_due",
+      "list_recurring_runs",
       "set_status",
       "set_workspace",
       "start_recurring",

@@ -8,6 +8,7 @@ import {
   createFailRecurring,
   createGetCardContext,
   createListRecurringDue,
+  createListRecurringRuns,
   createSetStatus,
   createSetWorkspace,
   createStartRecurring,
@@ -15,11 +16,13 @@ import {
 import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
- * Registers the four generic id-argument dispatch tools — `claim_card`,
- * `get_card_context`, `set_status`, `set_workspace` — onto an MCP server.
- * Shared by both the stdio factory ({@link createDispatchMcpServer}) and the
- * HTTP route's adapter initializer, so the tool set has a single source of
- * truth across transports.
+ * Registers the generic id-argument dispatch tools — the four card tools
+ * (`claim_card`, `get_card_context`, `set_status`, `set_workspace`) plus the
+ * five recurring queue tools (`list_recurring_due`, `list_recurring_runs`,
+ * `start_recurring`, `complete_recurring`, `fail_recurring`) — onto an MCP
+ * server. Shared by both the stdio factory ({@link createDispatchMcpServer})
+ * and the HTTP route's adapter initializer, so the tool set has a single
+ * source of truth across transports.
  * @param server - The MCP server to register the dispatch tools onto.
  */
 export function registerDispatchTools(server: McpServer): void {
@@ -72,6 +75,19 @@ export function registerDispatchTools(server: McpServer): void {
   );
 
   server.registerTool(
+    "list_recurring_runs",
+    {
+      description:
+        "Read a recurring task's latest runs by id, newest first (default 5, max 20). Prior run notes carry context between runs — read them after claiming to continue where the last run left off.",
+      inputSchema: {
+        id: recurringIdSchema,
+        limit: z.number().int().min(1).max(20).optional(),
+      },
+    },
+    createListRecurringRuns(),
+  );
+
+  server.registerTool(
     "start_recurring",
     {
       description:
@@ -106,8 +122,9 @@ export function registerDispatchTools(server: McpServer): void {
  * Builds the generic dispatch MCP server. Unlike the card-scoped
  * {@link createMcpServer}, it carries no session identity: it constructs the
  * server and delegates tool registration to {@link registerDispatchTools},
- * exposing exactly four id-argument tools so any pre-started session can act on
- * any card under the `/ai-kanban-work-card` skill's direction.
+ * exposing exactly nine id-argument tools so any pre-started session can act on
+ * any card (under the `/ai-kanban-work-card` skill's direction) or process the
+ * recurring queue.
  * @returns A configured {@link McpServer} ready to connect to a transport.
  */
 export function createDispatchMcpServer(): McpServer {

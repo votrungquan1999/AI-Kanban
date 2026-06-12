@@ -2,6 +2,7 @@ import { type Db, ObjectId } from "mongodb";
 import { recurringRunsCollection } from "@/db/collections";
 import { findManyZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
+import { getRecurringTask } from "@/recurring/recurring.service";
 import type { RecurringOutcome } from "@/recurring/recurring.type";
 import { recurringRunDocumentSchema } from "@/recurring/recurring-run.document.schema";
 import type { RecurringRunDocument } from "@/recurring/recurring-run.type";
@@ -59,5 +60,34 @@ export async function listRecurringRuns(
     { recurringId: new ObjectId(recurringId) },
     recurringRunDocumentSchema,
     { sort: { at: 1, _id: 1 } },
+  );
+}
+
+/**
+ * Reads the latest run-history rows for a recurring task, newest first — the
+ * continuity read serving the `list_recurring_runs` MCP tool, separate from the
+ * UI's full chronological {@link listRecurringRuns}. The task's existence is
+ * verified first so an unknown id surfaces as NotFound instead of an empty
+ * history.
+ * @param recurringId - The task's hex id.
+ * @param limit - The maximum number of latest runs to return.
+ * @returns Up to `limit` most recent run rows, newest first.
+ */
+export async function listLatestRecurringRuns(
+  recurringId: string,
+  limit: number,
+): Promise<RecurringRunDocument[]> {
+  await getRecurringTask(recurringId);
+  const db = await getDb();
+  // Fully inverts the chronological read's { at: 1, _id: 1 } sort; the `_id`
+  // tiebreaker keeps newest-first deterministic when two runs share the same
+  // `at` millisecond. The { recurringId: 1, at: 1 } index narrows the match to
+  // one task's rows; `_id` is not an index key, so the final (limit-bounded)
+  // ordering is a cheap top-k sort over that small set.
+  return findManyZ(
+    recurringRunsCollection(db),
+    { recurringId: new ObjectId(recurringId) },
+    recurringRunDocumentSchema,
+    { sort: { at: -1, _id: -1 }, limit },
   );
 }

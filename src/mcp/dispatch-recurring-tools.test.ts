@@ -1,11 +1,15 @@
+import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ErrorCode } from "@/cards/errors";
-import { recurringTasksCollection } from "@/db/collections";
+import {
+  recurringRunsCollection,
+  recurringTasksCollection,
+} from "@/db/collections";
 import { getDb } from "@/db/mongo";
 import {
   createCompleteRecurring,
   createFailRecurring,
   createListRecurringDue,
+  createListRecurringRuns,
   createStartRecurring,
 } from "@/mcp/dispatch-tools";
 import { createRecurringTask } from "@/recurring/recurring.service";
@@ -15,12 +19,34 @@ interface ListContent {
   tasks: { id: string }[];
 }
 
+interface RunListContent {
+  runs: { outcome: string; note?: string; finishedAt: string }[];
+}
+
+/**
+ * Drives one full execution cycle of a recurring task through the tools:
+ * backdates `nextDueAt` so the task is claimable, claims it, and completes it
+ * with the given note.
+ * @param id - The recurring task's hex id.
+ * @param note - The completion note recorded on the run row.
+ */
+async function runTaskOnce(id: string, note: string): Promise<void> {
+  const db = await getDb();
+  await recurringTasksCollection(db).updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { nextDueAt: new Date(Date.now() - 60_000) } },
+  );
+  await createStartRecurring()({ id });
+  await createCompleteRecurring()({ id, note });
+}
+
 describe("recurring queue MCP tools", () => {
   useTestMongo();
 
   beforeEach(async () => {
     const db = await getDb();
     await recurringTasksCollection(db).deleteMany({});
+    await recurringRunsCollection(db).deleteMany({});
   });
 
   it("lists due tasks, claims one, and rejects a second concurrent claim with AlreadyRunning", async () => {
@@ -49,7 +75,7 @@ describe("recurring queue MCP tools", () => {
     const second = await createStartRecurring()({ id: created.id });
     expect(second.isError).toBe(true);
     expect(second.structuredContent).toMatchObject({
-      code: ErrorCode.AlreadyRunning,
+      code: "ERR_ALREADY_RUNNING",
     });
   });
 
@@ -85,5 +111,93 @@ describe("recurring queue MCP tools", () => {
       runState: "failed",
       lastOutcome: "failure",
     });
+  });
+
+  it("returns the latest 5 runs newest first by default, each with its outcome and note", async () => {
+    // Given a task that has finished six runs, noted run 1 .. run 6
+    const created = await createRecurringTask({
+      title: "history",
+      instruction: "remember me",
+      everyHours: 24,
+    });
+    for (let i = 1; i <= 6; i++) {
+      await runTaskOnce(created.id, `run ${i}`);
+    }
+
+    // When the agent pulls run history with just the task id
+    const result = await createListRecurringRuns()({ id: created.id });
+
+    // Then the latest 5 runs come back newest first, outcome and note readable
+    expect(result.isError).toBeUndefined();
+    const content = result.structuredContent as unknown as RunListContent;
+    expect(content.runs.map((run) => run.note)).toEqual([
+      "run 6",
+      "run 5",
+      "run 4",
+      "run 3",
+      "run 2",
+    ]);
+    expect(content.runs[0].outcome).toBe("success");
+    expect(content.runs[0].finishedAt).toEqual(expect.any(String));
+  });
+
+  it("returns exactly the requested number of latest runs when the agent passes a limit", async () => {
+    // Given a task that has finished four runs, noted run 1 .. run 4
+    const created = await createRecurringTask({
+      title: "depth",
+      instruction: "pick depth",
+      everyHours: 24,
+    });
+    for (let i = 1; i <= 4; i++) {
+      await runTaskOnce(created.id, `run ${i}`);
+    }
+
+    // When the agent pulls history asking for just the 3 latest runs
+    const result = await createListRecurringRuns()({
+      id: created.id,
+      limit: 3,
+    });
+
+    // Then exactly the 3 newest come back, newest first
+    expect(result.isError).toBeUndefined();
+    const content = result.structuredContent as unknown as RunListContent;
+    expect(content.runs.map((run) => run.note)).toEqual([
+      "run 4",
+      "run 3",
+      "run 2",
+    ]);
+  });
+
+  it("returns a not-found error result for a well-formed id that matches no task", async () => {
+    // Given a well-formed id that matches no recurring task
+    const ghostId = new ObjectId().toHexString();
+
+    // When the agent pulls run history for it
+    const result = await createListRecurringRuns()({ id: ghostId });
+
+    // Then a readable not-found error comes back — never mistakable for an
+    // empty history
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: "ERR_NOT_FOUND",
+    });
+  });
+
+  it("returns an empty history, not an error, for a task that has never finished a run", async () => {
+    // Given a task that exists but has never been run
+    const created = await createRecurringTask({
+      title: "fresh",
+      instruction: "first time",
+      everyHours: 24,
+    });
+
+    // When the agent pulls its run history
+    const result = await createListRecurringRuns()({ id: created.id });
+
+    // Then an empty runs list comes back successfully — a first-ever run
+    // simply proceeds with no prior context
+    expect(result.isError).toBeUndefined();
+    const content = result.structuredContent as unknown as RunListContent;
+    expect(content.runs).toEqual([]);
   });
 });

@@ -10,6 +10,7 @@ import {
   toCardResult,
   toRecurringListResult,
   toRecurringResult,
+  toRecurringRunListResult,
 } from "@/mcp/tools";
 import { startRecurring } from "@/recurring/recurring.claim.service";
 import {
@@ -17,6 +18,8 @@ import {
   failRecurring,
 } from "@/recurring/recurring.lifecycle.service";
 import { listRecurringDue } from "@/recurring/recurring.service";
+import { toClientRecurringRun } from "@/recurring/recurring-run.mapper";
+import { listLatestRecurringRuns } from "@/recurring/recurring-run.service";
 
 /**
  * Builds a readable failure result for a claim that returned nothing. A missing
@@ -155,6 +158,31 @@ export function createStartRecurring(): (args: {
   return async ({ id }) => {
     try {
       return toRecurringResult(await startRecurring(id));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `list_recurring_runs` handler: reads the latest runs of a
+ * recurring task by its `id` argument, newest first (continuity memory for the
+ * routine — prior notes carry state between runs). Returns client-shaped rows
+ * under a `runs` key; a domain error (e.g. unknown id) is returned as a
+ * readable error result.
+ * @returns A handler returning the task's latest runs as structured content.
+ */
+export function createListRecurringRuns(): (args: {
+  id: string;
+  limit?: number;
+}) => Promise<CallToolResult> {
+  return async ({ id, limit }) => {
+    try {
+      const runs = await listLatestRecurringRuns(id, limit ?? 5);
+      return toRecurringRunListResult(runs.map(toClientRecurringRun));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);

@@ -4,6 +4,7 @@ import type { Card, Status } from "@/cards/card.type";
 import { AppError } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import type { RecurringTask } from "@/recurring/recurring.type";
+import type { RecurringRun } from "@/recurring/recurring-run.mapper";
 
 /**
  * Builds a success tool result for a card: the card as structured content plus
@@ -43,6 +44,20 @@ export function toRecurringListResult(tasks: RecurringTask[]): CallToolResult {
   return {
     structuredContent: { tasks },
     content: [{ type: "text", text: JSON.stringify(tasks) }],
+  };
+}
+
+/**
+ * Builds a success tool result for a recurring task's run history. The array is
+ * wrapped under a `runs` key because `structuredContent` must be an object,
+ * not a bare array. Mirrors {@link toRecurringListResult}.
+ * @param runs - The client-shaped run-history rows, newest first.
+ * @returns A success tool result.
+ */
+export function toRecurringRunListResult(runs: RecurringRun[]): CallToolResult {
+  return {
+    structuredContent: { runs },
+    content: [{ type: "text", text: JSON.stringify(runs) }],
   };
 }
 
