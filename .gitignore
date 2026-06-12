@@ -27,6 +27,7 @@ next-env.d.ts
 /playwright/.cache/
 
 # orchestrated-feature-dev scratch state (IMPLEMENTATION_PROGRESS.md is kept tracked)
+/tmp/
 RESEARCH_OUTPUT.md
 RESEARCH_FOLLOWUP_*.md
 PLAN_STEPS.md
