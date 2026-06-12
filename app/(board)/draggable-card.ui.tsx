@@ -42,11 +42,11 @@ export function DraggableCard({ card }: { card: Card }) {
         type="button"
         ref={setActivatorNodeRef}
         aria-label="Drag card"
-        className="grid cursor-grab touch-none place-items-center rounded-md text-muted-foreground hover:bg-muted active:cursor-grabbing"
+        className="grid cursor-grab touch-none place-items-center rounded-md border border-border bg-muted px-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
-        <GripVertical className="size-4" />
+        <GripVertical className="size-5" />
       </button>
       <CardTile card={card} />
     </div>

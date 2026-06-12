@@ -5,6 +5,7 @@ import { Geist } from "next/font/google";
 import { ToastProvider } from "@/components/ui/toast";
 import { Toaster } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { GlobalNav } from "./global-nav.ui";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" className={cn("font-sans", geist.variable)}>
       <body>
         <ToastProvider>
+          <GlobalNav />
           {children}
           <Toaster />
         </ToastProvider>
