@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Markdown } from "@/components/markdown/markdown.ui";
 import {
   Drawer,
   DrawerContent,
@@ -38,13 +39,9 @@ function RunHistoryRow({ run, now }: { run: RecurringRun; now: Date }) {
         <span>{formatRelativeAge(run.at, now)}</span>
       </div>
       {isFailure ? (
-        <span className="break-words whitespace-pre-wrap text-destructive">
-          {run.error}
-        </span>
+        <Markdown tone="destructive">{run.error ?? ""}</Markdown>
       ) : (
-        <span className="break-words whitespace-pre-wrap text-foreground">
-          {run.note}
-        </span>
+        <Markdown>{run.note ?? ""}</Markdown>
       )}
     </div>
   );
@@ -75,9 +72,7 @@ function FailedSection({
       >
         <span className="text-xs font-medium text-destructive">Failed</span>
         {task.failureReason ? (
-          <span className="text-sm break-words whitespace-pre-wrap text-destructive">
-            {task.failureReason}
-          </span>
+          <Markdown tone="destructive">{task.failureReason}</Markdown>
         ) : null}
       </div>
 

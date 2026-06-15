@@ -4,6 +4,7 @@ import { CopyIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useOptimistic } from "react";
 import { type Card, Status } from "@/cards/card.type";
+import { Markdown } from "@/components/markdown/markdown.ui";
 import { Button } from "@/components/ui/button";
 import {
   Drawer,
@@ -208,7 +209,7 @@ function CardDetailBody({
         <>
           {optimisticCard.description ? (
             <DetailRow label="Description">
-              {optimisticCard.description}
+              <Markdown>{optimisticCard.description}</Markdown>
             </DetailRow>
           ) : null}
           <DetailRow label="Priority">P{optimisticCard.priority}</DetailRow>
