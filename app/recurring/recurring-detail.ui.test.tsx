@@ -88,6 +88,37 @@ describe("RecurringDetail", () => {
     expect(screen.getByText("2 hours ago")).toBeInTheDocument();
   });
 
+  it("renders the newest run first when runs arrive oldest-first", async () => {
+    const now = new Date("2026-01-03T00:00:00.000Z");
+    const runs: RecurringRun[] = [
+      makeRun({
+        id: "run-older",
+        at: "2026-01-01T00:00:00.000Z",
+        outcome: RecurringOutcome.Success,
+        note: "older run",
+        error: undefined,
+      }),
+      makeRun({
+        id: "run-newer",
+        at: "2026-01-02T22:00:00.000Z",
+        outcome: RecurringOutcome.Success,
+        note: "newer run",
+        error: undefined,
+      }),
+    ];
+
+    render(
+      <RecurringDetail task={makeTask()} runs={runs} open={true} now={now} />,
+    );
+
+    const newer = await screen.findByText("newer run");
+    const older = screen.getByText("older run");
+
+    expect(
+      newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("shows an empty-history placeholder when the task has no runs", async () => {
     render(<RecurringDetail task={makeTask()} runs={[]} open={true} />);
 

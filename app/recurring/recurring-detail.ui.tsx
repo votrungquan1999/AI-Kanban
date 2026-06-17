@@ -93,10 +93,10 @@ function FailedSection({
 
 /**
  * The run-history timeline body: the task header followed by each run row,
- * oldest first. An empty history shows a "No runs yet" placeholder. A failed
+ * newest first. An empty history shows a "No runs yet" placeholder. A failed
  * task additionally renders a distinct failure banner above the timeline.
  * @param task - The recurring task being inspected.
- * @param runs - The task's run-history rows (oldest first).
+ * @param runs - The task's run-history rows (oldest first; rendered reversed).
  * @param now - Reference time for relative ages (deterministic in tests).
  */
 function RecurringDetailBody({
@@ -134,7 +134,9 @@ function RecurringDetailBody({
           Run history
         </span>
         {runs.length > 0 ? (
-          runs.map((run) => <RunHistoryRow key={run.id} run={run} now={now} />)
+          [...runs]
+            .reverse()
+            .map((run) => <RunHistoryRow key={run.id} run={run} now={now} />)
         ) : (
           <span className="text-sm text-muted-foreground">No runs yet</span>
         )}
@@ -148,7 +150,7 @@ function RecurringDetailBody({
  * is driven by the `?task=<id>` URL param via `open`; dismissing it navigates
  * back to the recurring surface. Renders a read-only run-history timeline.
  * @param task - The task to show, or null when none is selected.
- * @param runs - The task's run-history rows (oldest first).
+ * @param runs - The task's run-history rows (oldest first; rendered newest first).
  * @param open - Whether the sheet is shown.
  * @param now - Reference time for relative ages (defaults to render time;
  *   injected in tests for determinism).
