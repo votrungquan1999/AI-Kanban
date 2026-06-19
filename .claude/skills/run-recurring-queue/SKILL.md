@@ -30,6 +30,8 @@ Process the queue one task at a time:
 
 3. **Read recent history for continuity (when it helps)** — after a successful claim, you MAY call `list_recurring_runs(task.id)` to read the task's latest runs, newest first (default 5, max 20 via `limit`). Prior completion notes are the task's run-to-run memory: if the instruction builds on earlier runs (a tracked position, a running tally, "continue from where you left off"), read the latest note and continue from it instead of starting blind. A first-ever run simply returns an empty history.
 
+   **Excluding idle-window markers — `excludeNotePrefix`.** Tasks that skip themselves outside an active window (e.g. a market-hours task that writes `skipped — outside VN trading window` when closed) emit runs of pure noise that carry no state. Between active sessions these skip notes pile up and can fill the read window, burying the last note that actually holds state — so the first run of the next session reads only skips and wrongly restarts from scratch. To avoid this, pass `excludeNotePrefix` to drop runs whose note starts with that string, and widen the window: `list_recurring_runs(task.id, { limit: 20, excludeNotePrefix: "skipped" })`. The filter is applied at the query level, so the limit is spent on real runs — you get the latest notes that actually carry continuity, not the skip markers. Use the prefix the task itself writes for its skips (read the instruction). A task whose instruction defines such a skip note SHOULD tell you to read history this way.
+
 4. **Follow the instruction** — read the claimed task's `instruction` and carry it out using your available tools. This is repo-less reminder/lookup/notification work.
 
 5. **Report the result explicitly** — exactly one of:
