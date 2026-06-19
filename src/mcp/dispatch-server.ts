@@ -78,10 +78,11 @@ export function registerDispatchTools(server: McpServer): void {
     "list_recurring_runs",
     {
       description:
-        "Read a recurring task's latest runs by id, newest first (default 5, max 20). Prior run notes carry context between runs — read them after claiming to continue where the last run left off.",
+        "Read a recurring task's latest runs by id, newest first (default 5, max 20). Prior run notes carry context between runs — read them after claiming to continue where the last run left off. Pass excludeNotePrefix to drop runs whose note starts with it (e.g. \"skipped\") so idle-window markers don't bury the last note that holds real state.",
       inputSchema: {
         id: recurringIdSchema,
         limit: z.number().int().min(1).max(20).optional(),
+        excludeNotePrefix: z.string().min(1).optional(),
       },
     },
     createListRecurringRuns(),

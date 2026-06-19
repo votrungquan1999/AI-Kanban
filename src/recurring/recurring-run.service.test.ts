@@ -11,7 +11,10 @@ import {
   failRecurring,
 } from "@/recurring/recurring.lifecycle.service";
 import { createRecurringTask } from "@/recurring/recurring.service";
-import { listRecurringRuns } from "@/recurring/recurring-run.service";
+import {
+  listLatestRecurringRuns,
+  listRecurringRuns,
+} from "@/recurring/recurring-run.service";
 import { useTestMongo } from "@/test/use-test-mongo";
 
 describe("listRecurringRuns", () => {
@@ -53,5 +56,45 @@ describe("listRecurringRuns", () => {
     expect(runs[0].note).toBe("first run ok");
     expect(runs[1].outcome).toBe("failure");
     expect(runs[1].error).toBe("second run boom");
+  });
+});
+
+describe("listLatestRecurringRuns", () => {
+  useTestMongo();
+
+  beforeEach(async () => {
+    const db = await getDb();
+    await recurringTasksCollection(db).deleteMany({});
+    await recurringRunsCollection(db).deleteMany({});
+  });
+
+  it("omits runs whose note starts with the excluded prefix, returning the latest real runs", async () => {
+    // Given a task whose recent history is a real portfolio note buried under
+    // two later "skipped — outside VN trading window" notes
+    const created = await createRecurringTask({
+      title: "continuity",
+      instruction: "carry state",
+      everyHours: 24,
+    });
+    const db = await getDb();
+    const _id = new ObjectId(created.id);
+    const finishRun = async (note: string) => {
+      await recurringTasksCollection(db).updateOne(
+        { _id },
+        { $set: { nextDueAt: new Date(Date.now() - 60_000) } },
+      );
+      await startRecurring(created.id);
+      await completeRecurring(created.id, { note });
+    };
+    await finishRun("portfolio A");
+    await finishRun("skipped — outside VN trading window");
+    await finishRun("skipped — outside VN trading window");
+
+    // When the latest runs are read excluding the "skipped" prefix
+    const runs = await listLatestRecurringRuns(created.id, 20, "skipped");
+
+    // Then the skip notes are filtered out and only the real run remains
+    expect(runs).toHaveLength(1);
+    expect(runs[0].note).toBe("portfolio A");
   });
 });

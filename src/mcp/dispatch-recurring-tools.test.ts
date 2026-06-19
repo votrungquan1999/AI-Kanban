@@ -168,6 +168,29 @@ describe("recurring queue MCP tools", () => {
     ]);
   });
 
+  it("excludes runs whose note starts with the given prefix when the agent passes excludeNotePrefix", async () => {
+    // Given a task whose latest two runs are "skipped" markers over one real note
+    const created = await createRecurringTask({
+      title: "continuity",
+      instruction: "carry state",
+      everyHours: 24,
+    });
+    await runTaskOnce(created.id, "portfolio A");
+    await runTaskOnce(created.id, "skipped — outside VN trading window");
+    await runTaskOnce(created.id, "skipped — outside VN trading window");
+
+    // When the agent reads history asking to exclude the "skipped" prefix
+    const result = await createListRecurringRuns()({
+      id: created.id,
+      excludeNotePrefix: "skipped",
+    });
+
+    // Then only the real note comes back — the skip markers are filtered out
+    expect(result.isError).toBeUndefined();
+    const content = result.structuredContent as unknown as RunListContent;
+    expect(content.runs.map((run) => run.note)).toEqual(["portfolio A"]);
+  });
+
   it("returns a not-found error result for a well-formed id that matches no task", async () => {
     // Given a well-formed id that matches no recurring task
     const ghostId = new ObjectId().toHexString();

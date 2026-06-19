@@ -1,4 +1,4 @@
-import { type Db, ObjectId } from "mongodb";
+import { type Db, type Filter, ObjectId } from "mongodb";
 import { recurringRunsCollection } from "@/db/collections";
 import { findManyZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
@@ -69,16 +69,31 @@ export async function listRecurringRuns(
  * UI's full chronological {@link listRecurringRuns}. The task's existence is
  * verified first so an unknown id surfaces as NotFound instead of an empty
  * history.
+ * When `excludeNotePrefix` is given, runs whose `note` starts with that prefix
+ * are filtered out at the query level so the limit-bounded window is spent on
+ * runs that actually carry state — e.g. excluding `"skipped"` keeps a task's
+ * idle-window markers from burying the last note that holds real continuity.
  * @param recurringId - The task's hex id.
  * @param limit - The maximum number of latest runs to return.
+ * @param excludeNotePrefix - Optional note prefix; matching runs are omitted.
  * @returns Up to `limit` most recent run rows, newest first.
  */
 export async function listLatestRecurringRuns(
   recurringId: string,
   limit: number,
+  excludeNotePrefix?: string,
 ): Promise<RecurringRunDocument[]> {
   await getRecurringTask(recurringId);
   const db = await getDb();
+  const filter: Filter<RecurringRunDocument> = {
+    recurringId: new ObjectId(recurringId),
+  };
+  if (excludeNotePrefix) {
+    // Anchor on the literal prefix (escaped) and negate, so any run whose note
+    // begins with it is dropped; runs without a note are kept by `$not`.
+    const escaped = excludeNotePrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.note = { $not: new RegExp(`^${escaped}`) };
+  }
   // Fully inverts the chronological read's { at: 1, _id: 1 } sort; the `_id`
   // tiebreaker keeps newest-first deterministic when two runs share the same
   // `at` millisecond. The { recurringId: 1, at: 1 } index narrows the match to
@@ -86,7 +101,7 @@ export async function listLatestRecurringRuns(
   // ordering is a cheap top-k sort over that small set.
   return findManyZ(
     recurringRunsCollection(db),
-    { recurringId: new ObjectId(recurringId) },
+    filter,
     recurringRunDocumentSchema,
     { sort: { at: -1, _id: -1 }, limit },
   );

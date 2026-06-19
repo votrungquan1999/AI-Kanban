@@ -178,10 +178,15 @@ export function createStartRecurring(): (args: {
 export function createListRecurringRuns(): (args: {
   id: string;
   limit?: number;
+  excludeNotePrefix?: string;
 }) => Promise<CallToolResult> {
-  return async ({ id, limit }) => {
+  return async ({ id, limit, excludeNotePrefix }) => {
     try {
-      const runs = await listLatestRecurringRuns(id, limit ?? 5);
+      const runs = await listLatestRecurringRuns(
+        id,
+        limit ?? 5,
+        excludeNotePrefix,
+      );
       return toRecurringRunListResult(runs.map(toClientRecurringRun));
     } catch (error) {
       if (error instanceof AppError) {
