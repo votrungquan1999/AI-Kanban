@@ -11,7 +11,8 @@
     "styling-tailwind",
     "testing-guidelines",
     "typescript-conventions",
-    "url-state-management"
+    "url-state-management",
+    "knowledge-base"
   ],
   "skills": [
     "ai-kanban-work-card",
@@ -31,6 +32,12 @@
     "tdd-design",
     "test-quality-reviewer",
     "validate-pr-comments",
-    "web-search"
+    "web-search",
+    "knowledge-base",
+    "setup-private-skills"
+  ],
+  "scope": [
+    "personal",
+    "ai-kanban"
   ]
 }
