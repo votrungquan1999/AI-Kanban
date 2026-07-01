@@ -24,6 +24,9 @@ function makeCard(partial: Partial<Card> = {}): Card {
     blockInterval: null,
     workspacePath: null,
     repos: [],
+    tags: [],
+    sessionId: null,
+    progress: [],
     ...partial,
   };
 }

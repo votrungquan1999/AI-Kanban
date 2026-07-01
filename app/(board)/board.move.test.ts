@@ -16,6 +16,9 @@ function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
     blockInterval: null,
     workspacePath: null,
     repos: [],
+    tags: [],
+    sessionId: null,
+    progress: [],
     ...partial,
   };
 }
