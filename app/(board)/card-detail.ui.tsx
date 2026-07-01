@@ -235,6 +235,17 @@ function CardDetailBody({
 
       <CopyableRow label="Card id" value={optimisticCard.id} />
 
+      {card.sessionId ? (
+        <CopyableRow
+          label="Resume command"
+          value={`claude --resume ${card.sessionId}`}
+        />
+      ) : null}
+
+      {card.tags.length > 0 ? (
+        <DetailRow label="Tags">{card.tags.join(", ")}</DetailRow>
+      ) : null}
+
       {card.repos.length > 0 ? (
         <div className="grid gap-2">
           <span className="text-xs font-medium text-muted-foreground">

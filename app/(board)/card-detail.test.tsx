@@ -34,6 +34,9 @@ const card: Card = {
       worktreePath: "/work/card-7/ai-kanban",
     },
   ],
+  tags: [],
+  sessionId: null,
+  progress: [],
 };
 
 const originalClipboard = Object.getOwnPropertyDescriptor(
@@ -125,6 +128,50 @@ describe("CardDetail", () => {
 
     // Then just that field's raw value lands on the clipboard
     expect(writeText).toHaveBeenCalledWith("aikanban/card-7");
+  });
+
+  it("shows a copyable resume command when the card has a session handle", async () => {
+    const writeText = stubClipboard();
+    const sessionCard: Card = { ...card, sessionId: "abc-123-session-id" };
+    renderDetail({ card: sessionCard, open: true });
+
+    // The resume command row is visible with the session handle baked in
+    expect(
+      await screen.findByText("claude --resume abc-123-session-id"),
+    ).toBeInTheDocument();
+
+    // Tapping its copy icon puts the full command on the clipboard
+    await userEvent.click(
+      screen.getByRole("button", { name: /copy resume command/i }),
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      "claude --resume abc-123-session-id",
+    );
+  });
+
+  it("hides the resume command row when the card has no session handle", async () => {
+    // The base fixture has sessionId: null
+    renderDetail({ card, open: true });
+
+    await screen.findByText("Wire the dispatch board");
+    expect(screen.queryByText(/claude --resume/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the labels when the card has tags", async () => {
+    const taggedCard: Card = { ...card, tags: ["feature", "backend"] };
+    renderDetail({ card: taggedCard, open: true });
+
+    // The Tags row appears with the labels listed
+    expect(await screen.findByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("feature, backend")).toBeInTheDocument();
+  });
+
+  it("hides the tags row when the card has no labels", async () => {
+    // The base fixture has tags: []
+    renderDetail({ card, open: true });
+
+    await screen.findByText("Wire the dispatch board");
+    expect(screen.queryByText("Tags")).not.toBeInTheDocument();
   });
 
   it("saves edited title/description/priority via the edit action", async () => {
