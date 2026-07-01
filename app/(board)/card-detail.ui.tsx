@@ -242,6 +242,29 @@ function CardDetailBody({
         />
       ) : null}
 
+      <div className="grid gap-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          Progress
+        </span>
+        {card.progress.length > 0 ? (
+          // Newest-first, mirroring recurring's run-history timeline. Keyed by
+          // `at` — each append stamps a distinct timestamp, so it's unique.
+          [...card.progress].reverse().map((entry) => (
+            <div
+              key={entry.at}
+              className="grid gap-1 rounded-md bg-muted/50 p-2 text-sm"
+            >
+              <span className="text-xs text-muted-foreground">
+                {formatRelativeAge(entry.at, now ?? new Date())}
+              </span>
+              <Markdown>{entry.note}</Markdown>
+            </div>
+          ))
+        ) : (
+          <span className="text-sm text-muted-foreground">No progress yet</span>
+        )}
+      </div>
+
       {card.tags.length > 0 ? (
         <DetailRow label="Tags">{card.tags.join(", ")}</DetailRow>
       ) : null}

@@ -282,6 +282,34 @@ describe("CardDetail", () => {
     expect(moveAction).toHaveBeenCalledWith(card.id, Status.Done);
   });
 
+  it("shows the progress timeline newest-first when the card has notes", async () => {
+    const now = new Date("2026-01-03T10:00:00.000Z");
+    const progressCard: Card = {
+      ...card,
+      progress: [
+        { at: "2026-01-01T09:00:00.000Z", note: "Scaffolded the route" },
+        { at: "2026-01-02T09:00:00.000Z", note: "Wired the handler" },
+      ],
+    };
+    renderDetail({ card: progressCard, open: true, now });
+
+    const older = await screen.findByText("Scaffolded the route");
+    const newer = screen.getByText("Wired the handler");
+
+    // Newest-first: the later note renders before the earlier one in the DOM
+    expect(
+      newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows a 'No progress yet' placeholder when the card has no progress", async () => {
+    // The base fixture has progress: []
+    renderDetail({ card, open: true });
+
+    await screen.findByText("Wire the dispatch board");
+    expect(screen.getByText("No progress yet")).toBeInTheDocument();
+  });
+
   it("shows the remaining time and a Reset timer action for a blocked card", async () => {
     const stillBlockedAction = vi.fn();
     const now = new Date("2026-01-02T10:00:00.000Z");
