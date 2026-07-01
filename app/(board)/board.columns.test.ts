@@ -19,27 +19,31 @@ function makeCard(id: string, status: Status): Card {
     blockInterval: null,
     workspacePath: null,
     repos: [],
+    tags: [],
+    sessionId: null,
+    progress: [],
   };
 }
 
 describe("groupIntoColumns", () => {
-  it("produces the five columns in order with Blocked between In Progress and Need Review", () => {
-    const blockedCard = makeCard("b1", Status.Blocked);
+  it("produces six columns in order: Todo · In Progress · Staled · Blocked · Need Review · Done", () => {
+    const staledCard = makeCard("s1", Status.Staled);
 
-    const columns = groupIntoColumns([blockedCard]);
+    const columns = groupIntoColumns([staledCard]);
 
-    // The board's column order, left to right
+    // The board's column order, left to right — Staled sits right after In Progress
     expect(columns.map((column) => column.status)).toEqual([
       Status.Todo,
       Status.InProgress,
+      Status.Staled,
       Status.Blocked,
       Status.NeedReview,
       Status.Done,
     ]);
-    // and the blocked card lands under the Blocked column
-    const blockedColumn = columns.find(
-      (column) => column.status === Status.Blocked,
+    // and the staled card lands under the Staled column
+    const staledColumn = columns.find(
+      (column) => column.status === Status.Staled,
     );
-    expect(blockedColumn?.cards).toEqual([blockedCard]);
+    expect(staledColumn?.cards).toEqual([staledCard]);
   });
 });

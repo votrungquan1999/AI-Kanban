@@ -16,6 +16,7 @@ export type MoveAction = (cardId: string, status: Status) => Promise<void>;
 export const STATUS_LABELS: Record<Status, string> = {
   [Status.Todo]: "Todo",
   [Status.InProgress]: "In Progress",
+  [Status.Staled]: "Staled",
   [Status.Blocked]: "Blocked",
   [Status.NeedReview]: "Need Review",
   [Status.Done]: "Done",
