@@ -1,6 +1,7 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { claimCard } from "@/cards/card.claim.service";
-import { getTask, updateTaskStatus } from "@/cards/card.service";
+import { appendProgress } from "@/cards/card.progress.service";
+import { createCard, getTask, updateTaskStatus } from "@/cards/card.service";
 import type { RepoEntry, Status } from "@/cards/card.type";
 import { setWorkspace } from "@/cards/card.workspace.service";
 import { AppError } from "@/cards/errors";
@@ -55,6 +56,54 @@ export function createClaimCard(): (args: {
         return claimUnavailableResult(id);
       }
       return toCardResult(card);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the generic `create_card` handler: a session starts tracking its work
+ * as a card that lands directly in_progress, carrying the session's labels and
+ * handle. A domain error (e.g. invalid input) is returned as a readable error
+ * result; unexpected throws propagate.
+ * @returns A handler that creates the session-tracked card from its arguments.
+ */
+export function createCreateCard(): (args: {
+  title: string;
+  description?: string;
+  tags: string[];
+  sessionId: string;
+}) => Promise<CallToolResult> {
+  return async (args) => {
+    try {
+      return toCardResult(await createCard(args));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the generic `append_progress` handler: appends one timestamped note to
+ * a card's progress history by its `id` argument (preserving earlier notes). A
+ * domain error (e.g. unknown id) is returned as a readable error result;
+ * unexpected throws propagate.
+ * @returns A handler that records the progress note on the card.
+ */
+export function createAppendProgress(): (args: {
+  id: string;
+  note: string;
+}) => Promise<CallToolResult> {
+  return async ({ id, note }) => {
+    try {
+      return toCardResult(await appendProgress(id, note));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);

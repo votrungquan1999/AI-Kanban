@@ -1,10 +1,17 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { cardIdSchema, statusSchema } from "@/cards/card.schema";
+import {
+  cardIdSchema,
+  createCardInputSchema,
+  progressNoteSchema,
+  statusSchema,
+} from "@/cards/card.schema";
 import { workspaceDeclarationSchema } from "@/cards/card.workspace.service";
 import {
+  createAppendProgress,
   createClaimCard,
   createCompleteRecurring,
+  createCreateCard,
   createFailRecurring,
   createGetCardContext,
   createListRecurringDue,
@@ -16,9 +23,10 @@ import {
 import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
- * Registers the generic id-argument dispatch tools — the four card tools
- * (`claim_card`, `get_card_context`, `set_status`, `set_workspace`) plus the
- * five recurring queue tools (`list_recurring_due`, `list_recurring_runs`,
+ * Registers the generic dispatch tools — the six card tools (`claim_card`,
+ * `create_card`, `append_progress`, `get_card_context`, `set_status`,
+ * `set_workspace`) plus the five recurring queue tools
+ * (`list_recurring_due`, `list_recurring_runs`,
  * `start_recurring`, `complete_recurring`, `fail_recurring`) — onto an MCP
  * server. Shared by both the stdio factory ({@link createDispatchMcpServer})
  * and the HTTP route's adapter initializer, so the tool set has a single
@@ -33,6 +41,26 @@ export function registerDispatchTools(server: McpServer): void {
       inputSchema: { id: cardIdSchema },
     },
     createClaimCard(),
+  );
+
+  server.registerTool(
+    "create_card",
+    {
+      description:
+        "Create a session-tracked card that starts directly in_progress, with tags and the session id.",
+      inputSchema: createCardInputSchema.shape,
+    },
+    createCreateCard(),
+  );
+
+  server.registerTool(
+    "append_progress",
+    {
+      description:
+        "Append a short timestamped progress note to a card by id (preserves earlier notes).",
+      inputSchema: { id: cardIdSchema, note: progressNoteSchema },
+    },
+    createAppendProgress(),
   );
 
   server.registerTool(
@@ -123,9 +151,9 @@ export function registerDispatchTools(server: McpServer): void {
  * Builds the generic dispatch MCP server. Unlike the card-scoped
  * {@link createMcpServer}, it carries no session identity: it constructs the
  * server and delegates tool registration to {@link registerDispatchTools},
- * exposing exactly nine id-argument tools so any pre-started session can act on
- * any card (under the `/ai-kanban-work-card` skill's direction) or process the
- * recurring queue.
+ * exposing exactly eleven tools so any pre-started session can act on any card
+ * (under the `/ai-kanban-work-card` skill's direction) or process the recurring
+ * queue.
  * @returns A configured {@link McpServer} ready to connect to a transport.
  */
 export function createDispatchMcpServer(): McpServer {
