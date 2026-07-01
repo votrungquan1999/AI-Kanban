@@ -40,6 +40,12 @@ const repoEntrySchema = z.object({
   worktreePath: z.string(),
 });
 
+/** One embedded progress note as stored in MongoDB (`at` is a BSON Date). */
+const progressEntrySchema = z.object({
+  at: z.date(),
+  note: z.string(),
+});
+
 /**
  * Validates a raw `cards` document read out of MongoDB. Mirrors the
  * `CardDocument` interface exactly: `ObjectId`/`Date` stay as BSON instances
@@ -74,6 +80,13 @@ export const cardDocumentSchema = z.object({
   blockInterval: z.number().nullable().optional(),
   workspacePath: z.string().nullable(),
   repos: z.array(repoEntrySchema),
+  // Legacy-safe: absent on pre-feature docs (a never-null array — no `.nullable`,
+  // matching CardDocument.tags); mapper coerces absent → [].
+  tags: z.array(z.string()).optional(),
+  // Absent on pre-feature docs; genuinely nullable; mapper coerces absent → null.
+  sessionId: z.string().nullable().optional(),
+  // Absent on pre-feature docs (a never-null array); mapper coerces absent → [].
+  progress: z.array(progressEntrySchema).optional(),
 });
 
 /** Fields shared by every `card_events` audit document. */

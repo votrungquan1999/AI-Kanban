@@ -11,6 +11,8 @@ export enum Status {
    * passes, the card auto-advances to NeedReview on the next board read.
    */
   Blocked = "blocked",
+  /** Long-idle in-progress work auto-parked on the next board read. */
+  Staled = "staled",
   /** Soft-deleted: hidden from the board's default view, not a board column. */
   Archived = "archived",
 }
@@ -63,6 +65,18 @@ export interface RepoEntry {
   worktreePath: string;
 }
 
+/** One timestamped progress note embedded in a card document (BSON Date). */
+export interface ProgressEntry {
+  at: Date;
+  note: string;
+}
+
+/** One progress note as exposed to the client — `at` is an ISO string. */
+export interface ClientProgressEntry {
+  at: string;
+  note: string;
+}
+
 /**
  * A card as stored in MongoDB. Runtime fields are set to defaults/null on
  * create; no logic is built around them in this slice.
@@ -100,6 +114,12 @@ export interface CardDocument {
   blockInterval?: number | null;
   workspacePath: string | null;
   repos: RepoEntry[];
+  /** Labels on this card. Absent on pre-feature docs; mapper coerces → []. */
+  tags?: string[];
+  /** Claude session ID that owns this card. Absent on legacy docs; → null. */
+  sessionId?: string | null;
+  /** Ordered progress notes. Absent on pre-feature docs; mapper coerces → []. */
+  progress?: ProgressEntry[];
 }
 
 /** A card as exposed to the client — never expose raw documents. */
@@ -121,4 +141,10 @@ export interface Card {
   blockInterval: number | null;
   workspacePath: string | null;
   repos: RepoEntry[];
+  /** Labels on this card; empty array when none. */
+  tags: string[];
+  /** Claude session ID attached to this card; null when absent. */
+  sessionId: string | null;
+  /** Ordered progress notes; empty array when none. */
+  progress: ClientProgressEntry[];
 }

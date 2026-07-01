@@ -36,5 +36,11 @@ export function toClientCard(doc: CardDocument): Card {
     blockInterval: doc.blockInterval ?? null,
     workspacePath: doc.workspacePath,
     repos: doc.repos,
+    tags: doc.tags ?? [],
+    sessionId: doc.sessionId ?? null,
+    progress: (doc.progress ?? []).map((entry) => ({
+      at: entry.at.toISOString(),
+      note: entry.note,
+    })),
   };
 }

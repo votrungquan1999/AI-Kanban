@@ -49,6 +49,22 @@ describe("cardDocumentSchema blocked-until back-compat", () => {
   });
 });
 
+describe("cardDocumentSchema session-tracking back-compat", () => {
+  it("opens a pre-feature card (no tags/sessionId/progress) and surfaces empty arrays and null", () => {
+    // Given a card document stored before tags/sessionId/progress existed
+    const legacyDoc = legacyCardDocWithoutBlockedUntil();
+
+    // When it is read back through the parse-on-read boundary and mapped
+    const parsed = cardDocumentSchema.parse(legacyDoc);
+    const card = toClientCard(parsed);
+
+    // Then the absent fields surface as safe defaults (no crash, no undefined)
+    expect(card.tags).toEqual([]);
+    expect(card.sessionId).toBeNull();
+    expect(card.progress).toEqual([]);
+  });
+});
+
 describe("cardDocumentSchema block-interval", () => {
   it("carries a stored block interval through to the client card", () => {
     // Given a card document stored with an explicit 1-hour block interval
