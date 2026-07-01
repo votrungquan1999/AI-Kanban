@@ -36,8 +36,5 @@
     "knowledge-base",
     "setup-private-skills"
   ],
-  "scope": [
-    "personal",
-    "ai-kanban"
-  ]
+  "scope": ["personal", "ai-kanban"]
 }
