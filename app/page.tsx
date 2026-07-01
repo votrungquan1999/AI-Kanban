@@ -1,5 +1,6 @@
 import { reconcileBlockedCards } from "@/cards/card.blocked.service";
 import { getTask, listTasks } from "@/cards/card.service";
+import { reconcileStaledCards } from "@/cards/card.staled.service";
 import type { Card } from "@/cards/card.type";
 import { getDefaultBlockInterval } from "@/settings/settings.service";
 import {
@@ -50,9 +51,11 @@ interface PageProps {
 export default async function Page({ searchParams }: PageProps) {
   const params = await searchParams;
   const isAddOpen = params.new === "task";
-  // Persist-on-read auto-move: advance any overdue Blocked cards before listing,
-  // so they appear in Need Review on this load and every 5-min refresh.
+  // Persist-on-read auto-moves before listing, so they reflect on this load and
+  // every 5-min refresh: overdue Blocked cards advance to Need Review, and
+  // in-progress cards idle past 3h are parked in Staled.
   await reconcileBlockedCards();
+  await reconcileStaledCards();
   const cards = await listTasks();
   const detailCard = await resolveDetailCard(params.card);
   const defaultIntervalMs = await getDefaultBlockInterval();
