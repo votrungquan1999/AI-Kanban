@@ -23,6 +23,8 @@ export enum EditableField {
   Title = "title",
   Description = "description",
   Priority = "priority",
+  /** A progress note appended to the card's running history (an add, not a replace). */
+  Progress = "progress",
 }
 
 /** Error detail captured on a failure event (for developer investigation). */

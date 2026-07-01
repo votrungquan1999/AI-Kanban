@@ -1,12 +1,15 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import {
+  createCard,
   createTask,
   getTask,
   listTasks,
   updateTaskStatus,
 } from "@/cards/card.service";
 import { OriginType, RunState, Status } from "@/cards/card.type";
+import { listCardEvents } from "@/cards/card-event.service";
+import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
@@ -67,6 +70,70 @@ describe("createTask", () => {
     expect(first.id).not.toBe(second.id);
     expect(first.status).toBe(Status.Todo);
     expect(second.status).toBe(Status.Todo);
+  });
+});
+
+describe("createCard", () => {
+  useTestMongo();
+
+  it("creates a card directly in in_progress with running state and a pick-up time", async () => {
+    // Given a session ready to track its work
+    // When it creates a card with a title, tags, and its session handle
+    const card = await createCard({
+      title: "Implement dark mode toggle",
+      tags: ["frontend", "ui"],
+      sessionId: "abc123session",
+    });
+
+    // Then the card is immediately in progress (not parked in todo) and picked up
+    expect(card.status).toBe(Status.InProgress);
+    expect(card.pickedAt).not.toBeNull();
+
+    // And exactly one create audit event (null -> in_progress) was recorded, by
+    // the Agent caller — distinguishing a session create from a UI createTask
+    const events = await listCardEvents(card.id);
+    expect(events).toHaveLength(1);
+    const [createEvent] = events;
+    // Narrow to the status-transition shape so `from`/`to` are assertable
+    if (createEvent.kind !== CardEventKind.StatusTransition) {
+      throw new Error("expected a status-transition create event");
+    }
+    expect(createEvent.from).toBeNull();
+    expect(createEvent.to).toBe(Status.InProgress);
+    expect(createEvent.caller).toBe(Caller.Agent);
+    expect(createEvent.outcome).toBe(EventOutcome.Success);
+  });
+
+  it("stores tags and sessionId verbatim on the returned card, with an empty progress history", async () => {
+    // Given specific tags and a session handle
+    const tags = ["frontend", "dark-mode"];
+    const sessionId = "session-xyz-789";
+
+    // When the card is created
+    const card = await createCard({
+      title: "Track session work",
+      tags,
+      sessionId,
+    });
+
+    // Then the tags come back exactly as given, the handle is unchanged, and the
+    // progress history starts empty
+    expect(card.tags).toEqual(["frontend", "dark-mode"]);
+    expect(card.sessionId).toBe("session-xyz-789");
+    expect(card.progress).toEqual([]);
+  });
+
+  it("accepts and stores an empty tags array without modification", async () => {
+    // Given a session that supplies no tags
+    // When the card is created with an empty tags array
+    const card = await createCard({
+      title: "No tags card",
+      tags: [],
+      sessionId: "session-no-tags",
+    });
+
+    // Then tags is an empty array (not rejected, not coerced to null/undefined)
+    expect(card.tags).toEqual([]);
   });
 });
 
@@ -368,6 +435,28 @@ describe("updateTaskStatus", () => {
     // And the card is unchanged (still todo)
     const after = await getTask(card.id);
     expect(after.status).toBe(Status.Todo);
+  });
+
+  it("lets the agent resume a parked (stale) card back into progress", async () => {
+    // Given a card an agent started that has since been parked in Staled
+    const card = await createCard({
+      title: "resume me",
+      tags: [],
+      sessionId: "session-1",
+    });
+    const db = await getDb();
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(card.id) },
+      { $set: { status: Status.Staled } },
+    );
+
+    // When the agent resumes it along the legal staled -> in_progress edge
+    const resumed = await updateTaskStatus(card.id, Status.InProgress, {
+      caller: Caller.Agent,
+    });
+
+    // Then the card is back in progress
+    expect(resumed.status).toBe(Status.InProgress);
   });
 
   it("throws ERR_NOT_FOUND for an unknown id", async () => {

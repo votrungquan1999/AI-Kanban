@@ -2,8 +2,10 @@ import { type Filter, ObjectId } from "mongodb";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
 import {
+  type CreateCardInput,
   type CreateTaskInput,
   cardIdSchema,
+  createCardInputSchema,
   createTaskInputSchema,
   type ParsedCreateTaskInput,
 } from "@/cards/card.schema";
@@ -118,6 +120,66 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
     from: null,
     to: Status.Todo,
     caller: Caller.Ui,
+    outcome: EventOutcome.Success,
+    error: null,
+  });
+
+  return toClientCard(doc);
+}
+
+/**
+ * Creates a session-tracked card that starts directly in the in_progress lane
+ * (an active session is already working it, so it skips Todo). Mirrors the
+ * runtime fields {@link claimCard} sets on pick-up — `runState: Running`,
+ * `pickedAt: now` — and stores the session's `tags`/`sessionId` verbatim with an
+ * empty progress history. Emits a single `null -> in_progress` create event.
+ * @param input - Caller input; validated against {@link createCardInputSchema}.
+ * @returns The created card mapped to the client-facing shape.
+ */
+export async function createCard(input: CreateCardInput): Promise<Card> {
+  const parsed = createCardInputSchema.parse(input);
+  const db = await getDb();
+  const number = await nextNumber(db, "cards");
+  const now = new Date();
+
+  const doc: CardDocument = {
+    _id: new ObjectId(),
+    number,
+    title: parsed.title,
+    description: parsed.description,
+    // Starts in_progress / running: a live session is already working it, so it
+    // never sits in the Todo queue. attempts stays 0 — it was never queue-claimed.
+    status: Status.InProgress,
+    priority: 0,
+    origin: { type: OriginType.Manual },
+    dedupeKey: null,
+    runState: RunState.Running,
+    process: null,
+    attempts: 0,
+    restarts: 0,
+    nextStartAfter: null,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+    pickedAt: now,
+    finishedAt: null,
+    blockedUntil: null,
+    blockInterval: null,
+    workspacePath: null,
+    repos: [],
+    tags: parsed.tags,
+    sessionId: parsed.sessionId,
+    progress: [],
+  };
+
+  await cardsCollection(db).insertOne(doc, { ignoreUndefined: true });
+
+  // Single create event: the card was never in Todo, so `from` is null.
+  await emitCardEvent(db, {
+    cardId: doc._id,
+    from: null,
+    to: Status.InProgress,
+    caller: Caller.Agent,
     outcome: EventOutcome.Success,
     error: null,
   });

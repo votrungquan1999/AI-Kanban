@@ -4,7 +4,7 @@ import { Caller, legalFromStatuses } from "@/cards/transition-policy";
 
 describe("legalFromStatuses — agent", () => {
   it("returns exactly the legal source statuses for each target", () => {
-    // Given the agent's four legal edges, When asked per target,
+    // Given the agent's five legal edges, When asked per target,
     // Then only the matching source statuses are returned (order-independent).
     expect(new Set(legalFromStatuses(Caller.Agent, Status.NeedReview))).toEqual(
       new Set([Status.InProgress]),
@@ -13,7 +13,7 @@ describe("legalFromStatuses — agent", () => {
       new Set([Status.InProgress, Status.NeedReview]),
     );
     expect(new Set(legalFromStatuses(Caller.Agent, Status.InProgress))).toEqual(
-      new Set([Status.NeedReview]),
+      new Set([Status.NeedReview, Status.Staled]),
     );
     expect(legalFromStatuses(Caller.Agent, Status.Todo)).toEqual([]);
   });

@@ -25,6 +25,8 @@ const AGENT_EDGES: ReadonlyArray<readonly [Status, Status]> = [
   [Status.InProgress, Status.Done],
   [Status.NeedReview, Status.InProgress],
   [Status.NeedReview, Status.Done],
+  // A resumed session reclaims its parked card out of Staled.
+  [Status.Staled, Status.InProgress],
 ];
 
 /**
