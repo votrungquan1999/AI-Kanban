@@ -5,11 +5,13 @@ import { OriginType, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
+import { Caller } from "@/cards/transition-policy";
 import {
   createClaimCard,
   createGetCardContext,
   createSetStatus,
   createSetWorkspace,
+  createUpdateCard,
 } from "@/mcp/dispatch-tools";
 import { useTestMongo } from "@/test/use-test-mongo";
 
@@ -169,6 +171,50 @@ describe("set_workspace handler", () => {
       id: created.id,
       workspacePath: "workspaces/card-1",
       repos,
+    });
+  });
+});
+
+describe("update_card handler", () => {
+  useTestMongo();
+
+  it("edits a card by id and records the change with the agent caller", async () => {
+    // Given an existing card
+    const created = await createTask({
+      title: "before edit",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When the update tool renames it
+    const result = await createUpdateCard()({
+      id: created.id,
+      title: "after edit",
+    });
+
+    // Then the edit persists as success structured content
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      id: created.id,
+      title: "after edit",
+    });
+
+    // And the audit trail attributes the change to the agent caller
+    const events = await listCardEvents(created.id);
+    const edit = events.find((e) => e.kind === CardEventKind.FieldEdit);
+    expect(edit?.caller).toBe(Caller.Agent);
+  });
+
+  it("returns a readable error for an unknown id", async () => {
+    // When the update tool is invoked with an id that does not exist
+    const result = await createUpdateCard()({
+      id: new ObjectId().toHexString(),
+      title: "does not matter",
+    });
+
+    // Then a readable error result comes back (not a throw)
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: ErrorCode.NotFound,
     });
   });
 });
