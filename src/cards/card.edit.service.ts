@@ -16,6 +16,11 @@ import { cardsCollection } from "@/db/collections";
 import { findOneAndUpdateZ, findOneZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
 
+/** Options for {@link updateTask}. */
+interface UpdateTaskOptions {
+  caller?: Caller;
+}
+
 /**
  * Stringifies a card field value for the audit diff, or `null` when the field
  * is absent (e.g. a card with no description).
@@ -23,6 +28,16 @@ import { getDb } from "@/db/mongo";
  */
 function toAuditValue(value: string | number | undefined): string | null {
   return value === undefined ? null : String(value);
+}
+
+/**
+ * Stringifies a tag list for the audit diff: sorted + joined so the trail is
+ * order-independent, or `null` when absent (never set) — a real "clear all
+ * tags" audits as `""`, distinguishable from `null`.
+ * @param value - The raw tag list, or undefined when absent.
+ */
+function toAuditArrayValue(value: string[] | undefined): string | null {
+  return value === undefined ? null : [...value].sort().join(", ");
 }
 
 /**
@@ -67,25 +82,57 @@ function diffFields(
       to: toAuditValue(patch.priority),
     });
   }
+  if (patch.nextAction !== undefined) {
+    // Blank (post-trim) clears the field (D8), mirroring description —
+    // clearing an already-absent nextAction is a no-op.
+    const nextValue = patch.nextAction === "" ? undefined : patch.nextAction;
+    const beforeValue = before.nextAction ?? undefined;
+    if (nextValue !== beforeValue) {
+      changes.push({
+        field: EditableField.NextAction,
+        from: toAuditValue(beforeValue),
+        to: toAuditValue(nextValue),
+      });
+    }
+  }
+  if (patch.tags !== undefined) {
+    // Tags are a set everywhere else (e.g. list_cards' ANY-of filter) —
+    // reordering the same tags is not a change (D13).
+    const beforeTags = new Set(before.tags ?? []);
+    const patchTags = new Set(patch.tags);
+    const tagsChanged =
+      beforeTags.size !== patchTags.size ||
+      [...beforeTags].some((tag) => !patchTags.has(tag));
+    if (tagsChanged) {
+      changes.push({
+        field: EditableField.Tags,
+        from: toAuditArrayValue(before.tags),
+        to: toAuditArrayValue(patch.tags),
+      });
+    }
+  }
 
   return changes;
 }
 
 /**
- * Edits a card's core fields (title / description / priority). Only the fields
- * present in the patch are written; `updatedAt` is always bumped. A field-edit
- * audit event is emitted capturing the diff — but only when something actually
- * changed (a no-op or empty patch bumps `updatedAt` and emits nothing). A
- * malformed patch throws {@link ErrorCode.Validation} and leaves the card
- * untouched; an unknown id throws {@link ErrorCode.NotFound}.
+ * Edits a card's core fields (title / description / priority / nextAction /
+ * tags) — only patch-present fields are written, and `updatedAt`/the
+ * field-edit audit event fire ONLY when something actually changed (D7).
+ * `caller` defaults to UI; an agent entry point passes {@link Caller.Agent}
+ * (D1) so the audit trail shows who edited. Malformed patch throws
+ * {@link ErrorCode.Validation}; unknown id throws {@link ErrorCode.NotFound}.
  * @param id - The card's hex id.
  * @param patch - The subset of editable fields to change.
+ * @param options - Caller designation (defaults to the UI caller).
  * @returns The updated client card.
  */
 export async function updateTask(
   id: string,
   patch: UpdateTaskInput,
+  options: UpdateTaskOptions = {},
 ): Promise<Card> {
+  const caller = options.caller ?? Caller.Ui;
   const parsed = updateTaskInputSchema.safeParse(patch);
   if (!parsed.success) {
     throw new AppError(
@@ -106,20 +153,35 @@ export async function updateTask(
 
   const changes = diffFields(before, parsed.data);
 
-  // A blank description clears the field via $unset (reads back as absent, like
-  // a card that never had one) rather than storing an empty string. The same
-  // field is never both $set and $unset.
-  const { description: patchDescription, ...rest } = parsed.data;
+  // A blank description/nextAction clears that field via $unset (reads back
+  // as absent) rather than storing an empty string. Each is handled
+  // independently, so clearing both never collides and neither field is ever
+  // both $set and $unset.
+  const {
+    description: patchDescription,
+    nextAction: patchNextAction,
+    ...rest
+  } = parsed.data;
   const clearsDescription = patchDescription === "";
+  const clearsNextAction = patchNextAction === "";
+  const unsetFields: Partial<Record<"description" | "nextAction", "">> = {
+    ...(clearsDescription ? { description: "" } : {}),
+    ...(clearsNextAction ? { nextAction: "" } : {}),
+  };
   const update: UpdateFilter<CardDocument> = {
     $set: {
       ...rest,
       ...(patchDescription !== undefined && !clearsDescription
         ? { description: patchDescription }
         : {}),
-      updatedAt: new Date(),
+      ...(patchNextAction !== undefined && !clearsNextAction
+        ? { nextAction: patchNextAction }
+        : {}),
+      // Only bump updatedAt on an actual change (D7) — a no-op patch must not
+      // float the card to the top of a recency-sorted survey.
+      ...(changes.length > 0 ? { updatedAt: new Date() } : {}),
     },
-    ...(clearsDescription ? { $unset: { description: "" } } : {}),
+    ...(Object.keys(unsetFields).length > 0 ? { $unset: unsetFields } : {}),
   };
 
   const updated = await findOneAndUpdateZ(
@@ -136,7 +198,7 @@ export async function updateTask(
   if (changes.length > 0) {
     await emitFieldEditEvent(db, {
       cardId: new ObjectId(id),
-      caller: Caller.Ui,
+      caller,
       changes,
     });
   }
