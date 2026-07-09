@@ -120,6 +120,8 @@ export interface CardDocument {
   sessionId?: string | null;
   /** Ordered progress notes. Absent on pre-feature docs; mapper coerces → []. */
   progress?: ProgressEntry[];
+  /** Forward-looking next step. Absent on pre-feature docs; mapper coerces → null. */
+  nextAction?: string | null;
 }
 
 /** A card as exposed to the client — never expose raw documents. */
@@ -147,4 +149,20 @@ export interface Card {
   sessionId: string | null;
   /** Ordered progress notes; empty array when none. */
   progress: ClientProgressEntry[];
+  /** Forward-looking next step for this card; null when none set. */
+  nextAction: string | null;
+}
+
+/**
+ * A lean, projected card for a compact board survey (see `listCards` in
+ * `src/cards/card.service.ts`) — mirrors {@link Card}'s optionality for shared
+ * fields (`description` absent when unset, `nextAction` null when unset).
+ */
+export interface LeanCard {
+  id: string;
+  number: number;
+  title: string;
+  status: Status;
+  nextAction: string | null;
+  description?: string;
 }

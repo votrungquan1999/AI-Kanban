@@ -31,16 +31,25 @@ export type ParsedCreateTaskInput = z.output<typeof createTaskInputSchema>;
 export type Origin = z.output<typeof originSchema>;
 
 /**
- * Validated input for a session creating a card that tracks its own work. Kept
- * separate from {@link createTaskInputSchema} (type-separation rule): no origin,
- * no priority, but carries the session's labels and handle. `tags` accepts an
- * empty array (no `.min(1)`) and is stored verbatim; `sessionId` is required.
+ * Validated input for a session creating a card that tracks its own work.
+ * Separate from {@link createTaskInputSchema} (type-separation rule): no
+ * origin/priority, but carries the session's tags + handle. `tags` allows
+ * empty and dedupes, first-occurrence order kept (D15); `sessionId` is
+ * optional for non-session (e.g. operator-driven) creation.
  */
 export const createCardInputSchema = z.object({
   title: z.string().min(1, "title is required"),
   description: z.string().optional(),
-  tags: z.array(z.string()),
-  sessionId: z.string().min(1, "sessionId is required"),
+  // Dedupe, first-occurrence order kept (D15) — matches the set diffFields compares.
+  tags: z.array(z.string()).transform((tags) => [...new Set(tags)]),
+  sessionId: z.string().optional(),
+  // Trim then collapse empty to undefined (D8) — matches the existing
+  // omit-then-mapper-coerces-to-null convention rather than a literal null.
+  nextAction: z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => (value ? value : undefined)),
 });
 
 /** Caller-facing input for creating a session-tracked card. */
@@ -63,6 +72,16 @@ export const updateTaskInputSchema = z.object({
   title: z.string().min(1, "title is required").optional(),
   description: z.string().optional(),
   priority: z.number().int().min(0).max(3).optional(),
+  // Trimmed (D8); empty/whitespace signals the service to clear the field
+  // (mirrors `description`'s blank-clears convention).
+  nextAction: z.string().trim().optional(),
+  // Order-insensitive change detection (D13); dedupe, first-occurrence order
+  // kept (D15) so a duplicate-bearing patch can't be judged a no-op while
+  // storage silently drifts.
+  tags: z
+    .array(z.string())
+    .optional()
+    .transform((tags) => (tags === undefined ? undefined : [...new Set(tags)])),
 });
 
 /** Caller-facing edit input (any subset of the editable fields). */

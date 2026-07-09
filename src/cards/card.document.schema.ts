@@ -87,6 +87,23 @@ export const cardDocumentSchema = z.object({
   sessionId: z.string().nullable().optional(),
   // Absent on pre-feature docs (a never-null array); mapper coerces absent → [].
   progress: z.array(progressEntrySchema).optional(),
+  // Absent on pre-feature docs; nullable + clearable; mapper coerces absent → null.
+  nextAction: z.string().nullable().optional(),
+});
+
+/**
+ * Validates a lean, projected `cards` read (see `findManyProjectedZ` in
+ * `src/db/find-z.ts`) — a field-for-field subset of {@link cardDocumentSchema}
+ * mirroring its nullability. Paired with the projection literal in `listCards`
+ * (`src/cards/card.service.ts`) with no compile-time link — keep both edited together.
+ */
+export const leanCardDocumentSchema = z.object({
+  _id: z.instanceof(ObjectId),
+  number: z.number(),
+  title: z.string(),
+  status: z.enum(Status),
+  nextAction: z.string().nullable().optional(),
+  description: z.string().optional(),
 });
 
 /** Fields shared by every `card_events` audit document. */

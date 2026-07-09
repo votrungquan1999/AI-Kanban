@@ -25,6 +25,10 @@ export enum EditableField {
   Priority = "priority",
   /** A progress note appended to the card's running history (an add, not a replace). */
   Progress = "progress",
+  /** Forward-looking next step; a blank/whitespace-only patch clears it (D8). */
+  NextAction = "nextAction",
+  /** Labels on the card; change detection is order-insensitive (D13). */
+  Tags = "tags",
 }
 
 /** Error detail captured on a failure event (for developer investigation). */
