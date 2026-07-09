@@ -13,9 +13,9 @@ const OPEN_STATUSES = [Status.Todo, Status.InProgress, Status.NeedReview];
 /**
  * Creates the `cards` + `recurring_tasks` indexes idempotently (safe to run on
  * every boot): the board/pickup composite, the unique `number`, the
- * partial-unique `dedupeKey` (enforced only while a card is open), the recurring
- * dueness/claim composite, the unique recurring `number`, and the run-history
- * index.
+ * partial-unique `dedupeKey` (enforced only while a card is open), the
+ * title+description text index (keyword search), the recurring dueness/claim
+ * composite, the unique recurring `number`, and the run-history index.
  */
 export async function bootstrapIndexes(db: Db): Promise<void> {
   const cards = cardsCollection(db);
@@ -34,6 +34,11 @@ export async function bootstrapIndexes(db: Db): Promise<void> {
       },
     },
   );
+
+  // Keyword search over title + description (D3/D5): ranked, word-based via
+  // $text, not substring. Mongo allows only one text index per collection,
+  // so both fields go in this single call.
+  await cards.createIndex({ title: "text", description: "text" });
 
   // Chronological read-back of a card's audit events.
   await cardEventsCollection(db).createIndex({ cardId: 1, at: 1 });

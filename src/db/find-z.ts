@@ -72,6 +72,33 @@ export async function findManyZ<T extends Document>(
 }
 
 /**
+ * Reads many documents via a Mongo projection and validates each against a
+ * lean Zod schema. `TLean` is a second, independent generic (decoupled from
+ * `TDoc`) so a projected read can return a shape smaller than the full
+ * document, while `filter` still checks against the real document shape.
+ * `projection` and `schema` have no compile-time link — a field added to one
+ * and not the other throws SchemaDrift at read time; keep them edited together.
+ * @param collection - The typed collection to read from.
+ * @param filter - The query filter.
+ * @param projection - The Mongo projection selecting exactly the lean fields.
+ * @param schema - The lean schema each projected document must satisfy.
+ * @param options - Optional find options besides `projection` (e.g. `sort`).
+ * @returns The parsed lean documents (empty array if none match).
+ */
+export async function findManyProjectedZ<TDoc extends Document, TLean>(
+  collection: Collection<TDoc>,
+  filter: Filter<TDoc>,
+  projection: Document,
+  schema: ZodType<TLean>,
+  options?: Omit<FindOptions, "projection">,
+): Promise<TLean[]> {
+  const docs = await collection
+    .find(filter, { ...options, projection })
+    .toArray();
+  return docs.map((doc) => parseOrThrow(schema, doc));
+}
+
+/**
  * Atomically updates one document and validates the returned image against a
  * Zod schema. Pass `returnDocument: "after"` in options to validate the updated
  * image. A drifted result is logged + thrown (never returned as raw data).
