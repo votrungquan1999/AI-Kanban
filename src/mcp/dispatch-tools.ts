@@ -1,13 +1,21 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { claimCard } from "@/cards/card.claim.service";
+import { updateTask } from "@/cards/card.edit.service";
 import { appendProgress } from "@/cards/card.progress.service";
-import { createCard, getTask, updateTaskStatus } from "@/cards/card.service";
+import type { UpdateTaskInput } from "@/cards/card.schema";
+import {
+  createCard,
+  getTask,
+  listCards,
+  updateTaskStatus,
+} from "@/cards/card.service";
 import type { RepoEntry, Status } from "@/cards/card.type";
 import { setWorkspace } from "@/cards/card.workspace.service";
 import { AppError } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import {
   appErrorToToolResult,
+  toCardListResult,
   toCardResult,
   toRecurringListResult,
   toRecurringResult,
@@ -76,11 +84,57 @@ export function createCreateCard(): (args: {
   title: string;
   description?: string;
   tags: string[];
-  sessionId: string;
+  sessionId?: string;
+  nextAction?: string;
 }) => Promise<CallToolResult> {
   return async (args) => {
     try {
       return toCardResult(await createCard(args));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `list_cards` handler: surveys the board as a compact per-card
+ * summary. `status` narrows to exactly those statuses (overrides the default
+ * hide-done/archived); `tags` narrows to cards with any named tag; `text` is
+ * a keyword match on title/description; each falls through to "not applied"
+ * when empty/whitespace/omitted. `limit` caps the count (default ~50, capped
+ * at 200 — see {@link listCards}).
+ * @returns A handler returning the lean cards under a `cards` key.
+ */
+export function createListCards(): (args: {
+  status?: Status[];
+  tags?: string[];
+  limit?: number;
+  text?: string;
+}) => Promise<CallToolResult> {
+  return async ({ status, tags, limit, text }) => {
+    return toCardListResult(await listCards({ status, tags, limit, text }));
+  };
+}
+
+/**
+ * Builds the generic `update_card` handler: edits a card's core fields by its
+ * `id` argument as the agent caller, so the audit trail distinguishes agent
+ * edits from human UI edits (D1). A malformed patch or unknown id returns a
+ * readable error result; `updateTask` owns validation, the audit diff, and
+ * the no-op-patch no-bump behavior (D7).
+ * @returns A handler that applies the patch to the card named by its `id`
+ *   argument.
+ */
+export function createUpdateCard(): (
+  args: { id: string } & UpdateTaskInput,
+) => Promise<CallToolResult> {
+  return async ({ id, ...patch }) => {
+    try {
+      const card = await updateTask(id, patch, { caller: Caller.Agent });
+      return toCardResult(card);
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);

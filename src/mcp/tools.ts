@@ -1,6 +1,6 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { getTask, updateTaskStatus } from "@/cards/card.service";
-import type { Card, Status } from "@/cards/card.type";
+import type { Card, LeanCard, Status } from "@/cards/card.type";
 import { AppError } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import type { RecurringTask } from "@/recurring/recurring.type";
@@ -58,6 +58,20 @@ export function toRecurringRunListResult(runs: RecurringRun[]): CallToolResult {
   return {
     structuredContent: { runs },
     content: [{ type: "text", text: JSON.stringify(runs) }],
+  };
+}
+
+/**
+ * Builds a success tool result for a list of lean cards. The array is wrapped
+ * under a `cards` key because `structuredContent` must be an object, not a
+ * bare array. Mirrors {@link toRecurringListResult}.
+ * @param cards - The lean cards to return to the agent.
+ * @returns A success tool result.
+ */
+export function toCardListResult(cards: LeanCard[]): CallToolResult {
+  return {
+    structuredContent: { cards },
+    content: [{ type: "text", text: JSON.stringify(cards) }],
   };
 }
 

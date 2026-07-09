@@ -5,6 +5,7 @@ import {
   createCardInputSchema,
   progressNoteSchema,
   statusSchema,
+  updateTaskInputSchema,
 } from "@/cards/card.schema";
 import { workspaceDeclarationSchema } from "@/cards/card.workspace.service";
 import {
@@ -14,23 +15,25 @@ import {
   createCreateCard,
   createFailRecurring,
   createGetCardContext,
+  createListCards,
   createListRecurringDue,
   createListRecurringRuns,
   createSetStatus,
   createSetWorkspace,
   createStartRecurring,
+  createUpdateCard,
 } from "@/mcp/dispatch-tools";
 import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
- * Registers the generic dispatch tools — the six card tools (`claim_card`,
- * `create_card`, `append_progress`, `get_card_context`, `set_status`,
- * `set_workspace`) plus the five recurring queue tools
- * (`list_recurring_due`, `list_recurring_runs`,
- * `start_recurring`, `complete_recurring`, `fail_recurring`) — onto an MCP
- * server. Shared by both the stdio factory ({@link createDispatchMcpServer})
- * and the HTTP route's adapter initializer, so the tool set has a single
- * source of truth across transports.
+ * Registers the generic dispatch tools — the eight card tools (`claim_card`,
+ * `create_card`, `list_cards`, `append_progress`, `get_card_context`,
+ * `set_status`, `set_workspace`, `update_card`) plus the five recurring queue
+ * tools (`list_recurring_due`, `list_recurring_runs`, `start_recurring`,
+ * `complete_recurring`, `fail_recurring`) — onto an MCP server. Shared by both
+ * the stdio factory ({@link createDispatchMcpServer}) and the HTTP route's
+ * adapter initializer, so the tool set has a single source of truth across
+ * transports.
  * @param server - The MCP server to register the dispatch tools onto.
  */
 export function registerDispatchTools(server: McpServer): void {
@@ -51,6 +54,31 @@ export function registerDispatchTools(server: McpServer): void {
       inputSchema: createCardInputSchema.shape,
     },
     createCreateCard(),
+  );
+
+  server.registerTool(
+    "list_cards",
+    {
+      description:
+        "Survey the board as a compact per-card summary (id, number, title, status, nextAction, description truncated to 200 chars). By default hides done/archived cards; pass status to narrow to exactly those statuses (overrides the default). Pass tags to narrow to cards carrying any of the named tags. Pass text to search title/description by keyword (word-based match). Pass limit to cap the result count (default 50, hard-capped at 200).",
+      inputSchema: {
+        status: z.array(statusSchema).optional(),
+        tags: z.array(z.string()).optional(),
+        limit: z.number().int().positive().optional(),
+        text: z.string().optional(),
+      },
+    },
+    createListCards(),
+  );
+
+  server.registerTool(
+    "update_card",
+    {
+      description:
+        "Edit a card's core fields by id (title, description, priority, nextAction, tags). Only the fields provided are changed; a blank description/nextAction clears it. Recorded in the audit history attributed to the agent caller.",
+      inputSchema: { id: cardIdSchema, ...updateTaskInputSchema.shape },
+    },
+    createUpdateCard(),
   );
 
   server.registerTool(
@@ -151,7 +179,7 @@ export function registerDispatchTools(server: McpServer): void {
  * Builds the generic dispatch MCP server. Unlike the card-scoped
  * {@link createMcpServer}, it carries no session identity: it constructs the
  * server and delegates tool registration to {@link registerDispatchTools},
- * exposing exactly eleven tools so any pre-started session can act on any card
+ * exposing exactly thirteen tools so any pre-started session can act on any card
  * (under the `/ai-kanban-work-card` skill's direction) or process the recurring
  * queue.
  * @returns A configured {@link McpServer} ready to connect to a transport.
