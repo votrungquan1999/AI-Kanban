@@ -30,6 +30,19 @@ describe("bootstrapIndexes", () => {
     expect(byColumn).toBeDefined();
   });
 
+  it("creates a text index over title and description", async () => {
+    const db = await getDb();
+
+    await bootstrapIndexes(db);
+    await bootstrapIndexes(db); // running twice must not throw
+
+    const indexes = await db.collection("cards").indexes();
+
+    const byText = indexes.find((index) => index.key._fts === "text");
+    expect(byText).toBeDefined();
+    expect(byText?.weights).toEqual({ title: 1, description: 1 });
+  });
+
   it("creates the recurring dueness, unique-number, and run-history indexes idempotently", async () => {
     const db = await getDb();
 
