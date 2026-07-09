@@ -1,6 +1,10 @@
 import { type Filter, ObjectId } from "mongodb";
-import { cardDocumentSchema } from "@/cards/card.document.schema";
-import { toClientCard } from "@/cards/card.mapper";
+import { reconcileBlockedCards } from "@/cards/card.blocked.service";
+import {
+  cardDocumentSchema,
+  leanCardDocumentSchema,
+} from "@/cards/card.document.schema";
+import { toClientCard, toLeanCard } from "@/cards/card.mapper";
 import {
   type CreateCardInput,
   type CreateTaskInput,
@@ -9,9 +13,11 @@ import {
   createTaskInputSchema,
   type ParsedCreateTaskInput,
 } from "@/cards/card.schema";
+import { reconcileStaledCards } from "@/cards/card.staled.service";
 import {
   type Card,
   type CardDocument,
+  type LeanCard,
   type OriginDocument,
   OriginType,
   RunState,
@@ -23,7 +29,12 @@ import { nextNumber } from "@/cards/counters";
 import { AppError, ErrorCode } from "@/cards/errors";
 import { Caller, legalFromStatuses } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
-import { findManyZ, findOneAndUpdateZ, findOneZ } from "@/db/find-z";
+import {
+  findManyProjectedZ,
+  findManyZ,
+  findOneAndUpdateZ,
+  findOneZ,
+} from "@/db/find-z";
 import { getDb } from "@/db/mongo";
 import { getDefaultBlockInterval } from "@/settings/settings.service";
 
@@ -31,6 +42,23 @@ import { getDefaultBlockInterval } from "@/settings/settings.service";
 interface ListTasksFilter {
   status?: Status;
 }
+
+/** Optional filter for {@link listCards}. */
+interface ListCardsFilter {
+  /** ANY-of status filter; when given, replaces the default hide-done/archived. */
+  status?: Status[];
+  /** ANY-of tags filter; an empty/omitted array applies no filter (D9). */
+  tags?: string[];
+  /** Max cards returned; defaults to ~50, hard-capped at 200 (D11). */
+  limit?: number;
+  /** Keyword search over title+description; empty/whitespace applies no filter (D9). */
+  text?: string;
+}
+
+/** {@link listCards} default page size when `limit` is omitted (D11). */
+const DEFAULT_LIST_CARDS_LIMIT = 50;
+/** {@link listCards} hard cap — a requested `limit` above this is clamped (D11). */
+const MAX_LIST_CARDS_LIMIT = 200;
 
 /** Options for {@link updateTaskStatus}. */
 interface UpdateStatusOptions {
@@ -169,6 +197,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
     repos: [],
     tags: parsed.tags,
     sessionId: parsed.sessionId,
+    nextAction: parsed.nextAction,
     progress: [],
   };
 
@@ -232,6 +261,78 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
   });
 
   return docs.map(toClientCard);
+}
+
+/**
+ * Surveys the board as a compact per-card summary (id, number, title, status,
+ * nextAction, description truncated to 200 code points) via
+ * {@link findManyProjectedZ}. Runs the same status reconcile as the web
+ * board-read path (expired Blocked -> NeedReview, idle in_progress -> Staled
+ * — see {@link reconcileBlockedCards}/{@link reconcileStaledCards}) before
+ * querying, so an agent survey matches what a human sees on the board (D6).
+ * @param filter - Optional status/tags/text filters and result limit.
+ * @returns Lean cards mapped to the client-facing shape.
+ */
+export async function listCards(
+  filter: ListCardsFilter = {},
+): Promise<LeanCard[]> {
+  await reconcileBlockedCards();
+  await reconcileStaledCards();
+
+  const db = await getDb();
+
+  // Explicit non-empty status filter (ANY-of) overrides the default exclusion
+  // — operator named exactly what they want, including Done/Archived. Empty
+  // array falls through to the default (D9).
+  const query: Filter<CardDocument> =
+    filter.status && filter.status.length > 0
+      ? { status: { $in: filter.status } }
+      : { status: { $nin: [Status.Archived, Status.Done] } };
+
+  // ANY-of tags filter; empty array is never emitted as `{$in: []}` (matches
+  // nothing) — instead it's just not applied (D9).
+  if (filter.tags && filter.tags.length > 0) {
+    query.tags = { $in: filter.tags };
+  }
+
+  // Keyword search over title+description (D3, needs the text index from
+  // bootstrapIndexes); blank/whitespace text is not applied (D9). No
+  // `$meta: "textScore"` sort — the `updatedAt` sort below stays the sole
+  // ordering.
+  if (filter.text && filter.text.trim().length > 0) {
+    query.$text = { $search: filter.text };
+  }
+
+  // Paired with `leanCardDocumentSchema` (card.document.schema.ts) — no
+  // compile-time link; keep both edited together, a mismatch throws
+  // SchemaDrift at read time.
+  const projection = {
+    _id: 1,
+    number: 1,
+    title: 1,
+    status: 1,
+    nextAction: 1,
+    description: 1,
+  };
+
+  // Clamp into [1, 200] (D11): the MCP schema rejects <=0, but an internal
+  // caller bypassing it could pass 0 — and Mongo `.limit(0)` means unbounded.
+  const limit = Math.min(
+    Math.max(filter.limit ?? DEFAULT_LIST_CARDS_LIMIT, 1),
+    MAX_LIST_CARDS_LIMIT,
+  );
+
+  // `updatedAt` is deliberately not in the lean projection above — Mongo
+  // sorts before projecting, so sorting on a non-projected field is fine.
+  const docs = await findManyProjectedZ(
+    cardsCollection(db),
+    query,
+    projection,
+    leanCardDocumentSchema,
+    { sort: { updatedAt: -1 }, limit },
+  );
+
+  return docs.map(toLeanCard);
 }
 
 /**
