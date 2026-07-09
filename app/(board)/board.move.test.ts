@@ -18,6 +18,7 @@ function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
     repos: [],
     tags: [],
     sessionId: null,
+    nextAction: null,
     progress: [],
     ...partial,
   };

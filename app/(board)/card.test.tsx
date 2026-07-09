@@ -26,6 +26,7 @@ function makeCard(partial: Partial<Card> = {}): Card {
     repos: [],
     tags: [],
     sessionId: null,
+    nextAction: null,
     progress: [],
     ...partial,
   };

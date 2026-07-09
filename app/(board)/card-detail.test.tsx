@@ -36,6 +36,7 @@ const card: Card = {
   ],
   tags: [],
   sessionId: null,
+  nextAction: null,
   progress: [],
 };
 

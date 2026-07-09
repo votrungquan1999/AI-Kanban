@@ -21,6 +21,7 @@ function makeCard(id: string, status: Status): Card {
     repos: [],
     tags: [],
     sessionId: null,
+    nextAction: null,
     progress: [],
   };
 }
