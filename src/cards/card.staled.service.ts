@@ -1,5 +1,6 @@
+import type { ObjectId } from "mongodb";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
-import { Status } from "@/cards/card.type";
+import { type CardDocument, Status } from "@/cards/card.type";
 import { emitCardEvent } from "@/cards/card-event.service";
 import { EventOutcome } from "@/cards/card-event.type";
 import { Caller } from "@/cards/transition-policy";
@@ -61,4 +62,48 @@ export async function reconcileStaledCards(): Promise<void> {
       });
     }
   }
+}
+
+/**
+ * Auto-revives a Staled card back to In-Progress when a content update touches
+ * it — the inverse of {@link reconcileStaledCards}. Called from the content
+ * write paths (progress, decision, edit, mark-outdated, workspace) AFTER their
+ * own write lands, so any activity on a parked card pulls it back onto the
+ * active board. Status-change ops are excluded (they own the lane explicitly).
+ *
+ * The flip is one atomic conditional update (`{_id, status: staled}`), so it is
+ * a no-op when the card is not staled (returns null) and cannot race a
+ * concurrent reconcile into a double-move. Every actual revive is audited as a
+ * {@link Caller.System} Staled -> InProgress transition, mirroring the park.
+ * @param cardId - The card's id.
+ * @returns The revived card document, or null when the card was not staled.
+ */
+export async function reviveStaledCard(
+  cardId: ObjectId,
+): Promise<CardDocument | null> {
+  const db = await getDb();
+  const cards = cardsCollection(db);
+
+  const moved = await findOneAndUpdateZ(
+    cards,
+    { _id: cardId, status: Status.Staled },
+    [{ $set: { status: Status.InProgress, updatedAt: "$$NOW" } }],
+    cardDocumentSchema,
+    { returnDocument: "after" },
+  );
+
+  // Null means the card was not staled (or a concurrent op already moved it) —
+  // nothing to revive and nothing to audit.
+  if (moved) {
+    await emitCardEvent(db, {
+      cardId,
+      from: Status.Staled,
+      to: Status.InProgress,
+      caller: Caller.System,
+      outcome: EventOutcome.Success,
+      error: null,
+    });
+  }
+
+  return moved;
 }

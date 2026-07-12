@@ -1,14 +1,33 @@
+import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
-import { createTask, getTask } from "@/cards/card.service";
-import { OriginType } from "@/cards/card.type";
+import { createCard, createTask, getTask } from "@/cards/card.service";
+import { reconcileStaledCards } from "@/cards/card.staled.service";
+import { OriginType, Status } from "@/cards/card.type";
 import {
   setWorkspace,
   type WorkspaceDeclaration,
 } from "@/cards/card.workspace.service";
+import { listCardEvents } from "@/cards/card-event.service";
+import { CardEventKind } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
+import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
+
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+
+/** Create an in-progress card and park it in the Staled lane via reconcile. */
+async function createStaledCard(title: string): Promise<string> {
+  const card = await createCard({ title, tags: [], sessionId: "session-1" });
+  const db = await getDb();
+  await cardsCollection(db).updateOne(
+    { _id: new ObjectId(card.id) },
+    { $set: { updatedAt: new Date(Date.now() - THREE_HOURS_MS - 1000) } },
+  );
+  await reconcileStaledCards();
+  return card.id;
+}
 
 describe("setWorkspace", () => {
   useTestMongo();
@@ -92,5 +111,29 @@ describe("setWorkspace", () => {
     const fetched = await getTask(created.id);
     expect(fetched.workspacePath).toBeNull();
     expect(fetched.repos).toEqual([]);
+  });
+
+  it("revives a staled card back to in_progress when a workspace is declared", async () => {
+    // Given a card parked in the Staled lane
+    const cardId = await createStaledCard("Parked work");
+
+    // When the agent declares its workspace
+    const updated = await setWorkspace(cardId, {
+      workspacePath: "workspaces/card-1",
+      repos: [],
+    });
+
+    // Then the card is revived and a system revive was audited
+    expect(updated.status).toBe(Status.InProgress);
+    expect((await getTask(cardId)).status).toBe(Status.InProgress);
+    const events = await listCardEvents(cardId);
+    const revives = events.filter(
+      (event) =>
+        event.kind === CardEventKind.StatusTransition &&
+        event.caller === Caller.System &&
+        event.from === Status.Staled &&
+        event.to === Status.InProgress,
+    );
+    expect(revives).toHaveLength(1);
   });
 });

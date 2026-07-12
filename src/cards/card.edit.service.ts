@@ -7,6 +7,7 @@ import {
   updateTaskInputSchema,
 } from "@/cards/card.schema";
 import { updateTaskStatus } from "@/cards/card.service";
+import { reviveStaledCard } from "@/cards/card.staled.service";
 import { type Card, type CardDocument, Status } from "@/cards/card.type";
 import { emitFieldEditEvent } from "@/cards/card-event.service";
 import { EditableField, type FieldChange } from "@/cards/card-event.type";
@@ -201,6 +202,10 @@ export async function updateTask(
       caller,
       changes,
     });
+    // A real edit on a parked card pulls it back onto the active board. Guarded
+    // by the same change check as the audit — a no-op edit leaves it parked.
+    const revived = await reviveStaledCard(updated._id);
+    return toClientCard(revived ?? updated);
   }
 
   return toClientCard(updated);

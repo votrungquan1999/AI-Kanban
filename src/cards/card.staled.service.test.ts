@@ -1,7 +1,10 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { createCard, getTask } from "@/cards/card.service";
-import { reconcileStaledCards } from "@/cards/card.staled.service";
+import {
+  reconcileStaledCards,
+  reviveStaledCard,
+} from "@/cards/card.staled.service";
 import { Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind } from "@/cards/card-event.type";
@@ -20,6 +23,68 @@ async function makeCardStale(cardId: string): Promise<void> {
     { $set: { updatedAt: new Date(Date.now() - THREE_HOURS_MS - 1000) } },
   );
 }
+
+/** Create an in-progress card and park it in the Staled lane via reconcile. */
+async function createStaledCard(title: string): Promise<string> {
+  const card = await createCard({ title, tags: [], sessionId: "session-1" });
+  await makeCardStale(card.id);
+  await reconcileStaledCards();
+  return card.id;
+}
+
+describe("reviveStaledCard", () => {
+  useTestMongo();
+
+  it("moves a staled card back to in_progress and audits a system revive", async () => {
+    // Given a card parked in the Staled lane
+    const cardId = await createStaledCard("Parked work");
+
+    // When a content update revives it
+    const revived = await reviveStaledCard(new ObjectId(cardId));
+
+    // Then it is back in progress...
+    expect(revived?.status).toBe(Status.InProgress);
+    const after = await getTask(cardId);
+    expect(after.status).toBe(Status.InProgress);
+
+    // ...and the revive is audited as a system Staled -> InProgress transition
+    const events = await listCardEvents(cardId);
+    const revives = events.filter(
+      (event) =>
+        event.kind === CardEventKind.StatusTransition &&
+        event.caller === Caller.System &&
+        event.from === Status.Staled &&
+        event.to === Status.InProgress,
+    );
+    expect(revives).toHaveLength(1);
+  });
+
+  it("leaves a non-staled card untouched and audits nothing", async () => {
+    // Given a fresh in-progress card (never parked)
+    const card = await createCard({
+      title: "Active work",
+      tags: [],
+      sessionId: "session-1",
+    });
+
+    // When revive runs against it
+    const revived = await reviveStaledCard(new ObjectId(card.id));
+
+    // Then nothing moved and no revive event was recorded
+    expect(revived).toBeNull();
+    const after = await getTask(card.id);
+    expect(after.status).toBe(Status.InProgress);
+    const events = await listCardEvents(card.id);
+    const revives = events.filter(
+      (event) =>
+        event.kind === CardEventKind.StatusTransition &&
+        event.caller === Caller.System &&
+        event.from === Status.Staled &&
+        event.to === Status.InProgress,
+    );
+    expect(revives).toHaveLength(0);
+  });
+});
 
 describe("reconcileStaledCards", () => {
   useTestMongo();

@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
+import { reviveStaledCard } from "@/cards/card.staled.service";
 import type { Card } from "@/cards/card.type";
 import { AppError, ErrorCode } from "@/cards/errors";
 import { cardsCollection } from "@/db/collections";
@@ -69,5 +70,7 @@ export async function setWorkspace(
     throw new AppError(ErrorCode.NotFound, `card ${id} not found`);
   }
 
-  return toClientCard(updated);
+  // Declaring a workspace on a parked card pulls it back onto the active board.
+  const revived = await reviveStaledCard(updated._id);
+  return toClientCard(revived ?? updated);
 }

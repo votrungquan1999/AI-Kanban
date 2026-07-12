@@ -1,6 +1,8 @@
+import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
 import { deleteTask, updateTask } from "@/cards/card.edit.service";
 import { createCard, createTask, getTask } from "@/cards/card.service";
+import { reconcileStaledCards } from "@/cards/card.staled.service";
 import { OriginType, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import {
@@ -12,6 +14,32 @@ import { Caller } from "@/cards/transition-policy";
 import { cardEventsCollection, cardsCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
+
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+
+/** Create an in-progress card and park it in the Staled lane via reconcile. */
+async function createStaledCard(title: string): Promise<string> {
+  const card = await createCard({ title, tags: [], sessionId: "session-1" });
+  const db = await getDb();
+  await cardsCollection(db).updateOne(
+    { _id: new ObjectId(card.id) },
+    { $set: { updatedAt: new Date(Date.now() - THREE_HOURS_MS - 1000) } },
+  );
+  await reconcileStaledCards();
+  return card.id;
+}
+
+/** Count system Staled -> InProgress revive events recorded on a card. */
+async function countRevives(cardId: string): Promise<number> {
+  const events = await listCardEvents(cardId);
+  return events.filter(
+    (event) =>
+      event.kind === CardEventKind.StatusTransition &&
+      event.caller === Caller.System &&
+      event.from === Status.Staled &&
+      event.to === Status.InProgress,
+  ).length;
+}
 
 describe("updateTask", () => {
   useTestMongo();
@@ -345,6 +373,32 @@ describe("updateTask", () => {
     // land in storage while the diff/audit path reports "nothing changed"
     const reloaded = await getTask(created.id);
     expect(reloaded.tags).toEqual(["a"]);
+  });
+
+  it("revives a staled card back to in_progress on a real UI edit", async () => {
+    // Given a card parked in the Staled lane
+    const cardId = await createStaledCard("Parked work");
+
+    // When a field is actually changed (default UI caller)
+    const updated = await updateTask(cardId, { title: "Renamed" });
+
+    // Then the card is revived and a system revive was audited
+    expect(updated.status).toBe(Status.InProgress);
+    expect((await getTask(cardId)).status).toBe(Status.InProgress);
+    expect(await countRevives(cardId)).toBe(1);
+  });
+
+  it("does NOT revive a staled card on a no-op edit (nothing changed)", async () => {
+    // Given a staled card with a known title
+    const cardId = await createStaledCard("Same Title");
+
+    // When an edit sets the title to its current value (a no-op)
+    const updated = await updateTask(cardId, { title: "Same Title" });
+
+    // Then the card stays parked and no revive was recorded
+    expect(updated.status).toBe(Status.Staled);
+    expect((await getTask(cardId)).status).toBe(Status.Staled);
+    expect(await countRevives(cardId)).toBe(0);
   });
 });
 

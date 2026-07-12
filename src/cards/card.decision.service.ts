@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
 import { decisionTextSchema } from "@/cards/card.schema";
+import { reviveStaledCard } from "@/cards/card.staled.service";
 import type { Card } from "@/cards/card.type";
 import { DecisionStatus } from "@/cards/card.type";
 import { emitFieldEditEvent } from "@/cards/card-event.service";
@@ -75,7 +76,9 @@ export async function appendDecision(
     ],
   });
 
-  return toClientCard(updated);
+  // Recording a decision on a parked card pulls it back onto the active board.
+  const revived = await reviveStaledCard(updated._id);
+  return toClientCard(revived ?? updated);
 }
 
 /**
@@ -141,5 +144,7 @@ export async function markDecisionOutdated(
     ],
   });
 
-  return toClientCard(updated);
+  // Revising the decision log on a parked card pulls it back onto the board.
+  const revived = await reviveStaledCard(updated._id);
+  return toClientCard(revived ?? updated);
 }

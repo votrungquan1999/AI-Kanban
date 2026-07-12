@@ -5,7 +5,8 @@ import {
   markDecisionOutdated,
 } from "@/cards/card.decision.service";
 import { createCard, getTask } from "@/cards/card.service";
-import { DecisionStatus } from "@/cards/card.type";
+import { reconcileStaledCards } from "@/cards/card.staled.service";
+import { DecisionStatus, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import {
   CardEventKind,
@@ -15,7 +16,36 @@ import {
 } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
+import { cardsCollection } from "@/db/collections";
+import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
+
+const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+
+/** Create an in-progress card and park it in the Staled lane via reconcile. */
+async function createStaledCard(title: string): Promise<string> {
+  const card = await createCard({ title, tags: [], sessionId: "session-1" });
+  const db = await getDb();
+  await cardsCollection(db).updateOne(
+    { _id: new ObjectId(card.id) },
+    { $set: { updatedAt: new Date(Date.now() - THREE_HOURS_MS - 1000) } },
+  );
+  await reconcileStaledCards();
+  return card.id;
+}
+
+/** Assert exactly `count` system Staled -> InProgress revive events on a card. */
+async function expectRevives(cardId: string, count: number): Promise<void> {
+  const events = await listCardEvents(cardId);
+  const revives = events.filter(
+    (event) =>
+      event.kind === CardEventKind.StatusTransition &&
+      event.caller === Caller.System &&
+      event.from === Status.Staled &&
+      event.to === Status.InProgress,
+  );
+  expect(revives).toHaveLength(count);
+}
 
 describe("appendDecision", () => {
   useTestMongo();
@@ -143,6 +173,19 @@ describe("appendDecision", () => {
       appendDecision(new ObjectId().toHexString(), "does not matter"),
     ).rejects.toMatchObject({ code: ErrorCode.NotFound });
   });
+
+  it("revives a staled card back to in_progress when a decision is appended", async () => {
+    // Given a card parked in the Staled lane
+    const cardId = await createStaledCard("Parked work");
+
+    // When a decision is appended to it
+    const updated = await appendDecision(cardId, "picked approach A");
+
+    // Then the card is back in progress and a system revive was audited
+    expect(updated.status).toBe(Status.InProgress);
+    expect((await getTask(cardId)).status).toBe(Status.InProgress);
+    await expectRevives(cardId, 1);
+  });
 });
 
 describe("markDecisionOutdated", () => {
@@ -251,5 +294,29 @@ describe("markDecisionOutdated", () => {
     // Then it succeeds (no error) and the newer supersededByIndex wins
     expect(updated.decisions[0].status).toBe(DecisionStatus.Outdated);
     expect(updated.decisions[0].supersededByIndex).toBe(2);
+  });
+
+  it("revives a staled card back to in_progress when a decision is marked outdated", async () => {
+    // Given a card with a decision that is then parked in the Staled lane
+    const card = await createCard({
+      title: "Parked work",
+      tags: [],
+      sessionId: "session-1",
+    });
+    await appendDecision(card.id, "initial approach");
+    const db = await getDb();
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(card.id) },
+      { $set: { updatedAt: new Date(Date.now() - THREE_HOURS_MS - 1000) } },
+    );
+    await reconcileStaledCards();
+
+    // When a decision is marked outdated
+    const updated = await markDecisionOutdated(card.id, 0);
+
+    // Then the card is revived and a system revive was audited
+    expect(updated.status).toBe(Status.InProgress);
+    expect((await getTask(card.id)).status).toBe(Status.InProgress);
+    await expectRevives(card.id, 1);
   });
 });

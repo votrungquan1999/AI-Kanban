@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
 import { progressNoteSchema } from "@/cards/card.schema";
+import { reviveStaledCard } from "@/cards/card.staled.service";
 import type { Card } from "@/cards/card.type";
 import { emitFieldEditEvent } from "@/cards/card-event.service";
 import { EditableField } from "@/cards/card-event.type";
@@ -52,5 +53,8 @@ export async function appendProgress(id: string, note: string): Promise<Card> {
     changes: [{ field: EditableField.Progress, from: null, to: parsedNote }],
   });
 
-  return toClientCard(updated);
+  // Activity on a parked card pulls it back onto the active board; a no-op when
+  // the card is not staled.
+  const revived = await reviveStaledCard(updated._id);
+  return toClientCard(revived ?? updated);
 }
