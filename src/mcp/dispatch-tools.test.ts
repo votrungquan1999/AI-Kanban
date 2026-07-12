@@ -7,8 +7,10 @@ import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import {
+  createAppendDecision,
   createClaimCard,
   createGetCardContext,
+  createMarkDecisionOutdated,
   createSetStatus,
   createSetWorkspace,
   createUpdateCard,
@@ -171,6 +173,88 @@ describe("set_workspace handler", () => {
       id: created.id,
       workspacePath: "workspaces/card-1",
       repos,
+    });
+  });
+});
+
+describe("append_decision handler", () => {
+  useTestMongo();
+
+  it("records a decision on a card by id and returns it as success", async () => {
+    // Given an existing card
+    const created = await createTask({
+      title: "record via tool",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When the append_decision tool is invoked with the card's id
+    const result = await createAppendDecision()({
+      id: created.id,
+      decision: "route the decision through the dispatch tool",
+    });
+
+    // Then the decision comes back on the card as success structured content
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      id: created.id,
+      decisions: [{ decision: "route the decision through the dispatch tool" }],
+    });
+  });
+
+  it("returns a readable error for an unknown id", async () => {
+    // When the tool is invoked with an id that does not exist
+    const result = await createAppendDecision()({
+      id: new ObjectId().toHexString(),
+      decision: "does not matter",
+    });
+
+    // Then a readable error result comes back (not a throw)
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: ErrorCode.NotFound,
+    });
+  });
+});
+
+describe("mark_decision_outdated handler", () => {
+  useTestMongo();
+
+  it("marks a card's decision outdated by id and index and returns it as success", async () => {
+    // Given an existing card with one recorded decision
+    const created = await createTask({
+      title: "mark via tool",
+      origin: { type: OriginType.Manual },
+    });
+    await createAppendDecision()({
+      id: created.id,
+      decision: "route the mark through the dispatch tool",
+    });
+
+    // When the mark_decision_outdated tool is invoked with the card's id and index
+    const result = await createMarkDecisionOutdated()({
+      id: created.id,
+      index: 0,
+    });
+
+    // Then the marked card comes back as success structured content
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      id: created.id,
+      decisions: [{ status: "outdated" }],
+    });
+  });
+
+  it("returns a readable error for an unknown id", async () => {
+    // When the tool is invoked with an id that does not exist
+    const result = await createMarkDecisionOutdated()({
+      id: new ObjectId().toHexString(),
+      index: 0,
+    });
+
+    // Then a readable error result comes back (not a throw)
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: ErrorCode.NotFound,
     });
   });
 });

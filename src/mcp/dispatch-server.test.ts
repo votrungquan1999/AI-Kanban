@@ -22,13 +22,14 @@ async function connectClient(): Promise<Client> {
 }
 
 describe("createDispatchMcpServer", () => {
-  it("registers exactly the eight card tools plus the five recurring queue tools", async () => {
+  it("registers exactly the ten card tools plus the five recurring queue tools", async () => {
     // Given the generic dispatch server, When a client connects and lists tools
     const client = await connectClient();
     const { tools } = await client.listTools();
 
-    // Then exactly the thirteen dispatch tools are exposed — nothing more
+    // Then exactly the fifteen dispatch tools are exposed — nothing more
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "append_decision",
       "append_progress",
       "claim_card",
       "complete_recurring",
@@ -38,6 +39,7 @@ describe("createDispatchMcpServer", () => {
       "list_cards",
       "list_recurring_due",
       "list_recurring_runs",
+      "mark_decision_outdated",
       "set_status",
       "set_workspace",
       "start_recurring",
@@ -63,6 +65,25 @@ describe("createDispatchMcpServer", () => {
     const [first] = result.content as { type: string; text: string }[];
     expect(first.text).toContain("Input validation error");
     expect(first.text).toContain("<=20");
+
+    await client.close();
+  });
+
+  it("rejects a negative decision index before any handler runs", async () => {
+    // Given a connected client
+    const client = await connectClient();
+
+    // When it marks a decision outdated with a negative index, Then the SDK's
+    // schema boundary refuses the call with a validation error result (no DB
+    // is configured here — reaching a handler would fail differently, proving
+    // rejection happened pre-handler)
+    const result = await client.callTool({
+      name: "mark_decision_outdated",
+      arguments: { id: new ObjectId().toHexString(), index: -1 },
+    });
+    expect(result.isError).toBe(true);
+    const [first] = result.content as { type: string; text: string }[];
+    expect(first.text).toContain("Input validation error");
 
     await client.close();
   });

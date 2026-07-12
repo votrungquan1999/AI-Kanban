@@ -1,5 +1,9 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { claimCard } from "@/cards/card.claim.service";
+import {
+  appendDecision,
+  markDecisionOutdated,
+} from "@/cards/card.decision.service";
 import { updateTask } from "@/cards/card.edit.service";
 import { appendProgress } from "@/cards/card.progress.service";
 import type { UpdateTaskInput } from "@/cards/card.schema";
@@ -158,6 +162,58 @@ export function createAppendProgress(): (args: {
   return async ({ id, note }) => {
     try {
       return toCardResult(await appendProgress(id, note));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the generic `append_decision` handler: records one timestamped
+ * decision (with an optional short reason) on a card's durable decision log by
+ * its `id` argument (preserving earlier decisions). A domain error (e.g.
+ * unknown id, blank decision) is returned as a readable error result;
+ * unexpected throws propagate.
+ * @returns A handler that records the decision on the card.
+ */
+export function createAppendDecision(): (args: {
+  id: string;
+  decision: string;
+  why?: string;
+}) => Promise<CallToolResult> {
+  return async ({ id, decision, why }) => {
+    try {
+      return toCardResult(await appendDecision(id, decision, why));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the generic `mark_decision_outdated` handler: marks one decision in a
+ * card's decision log outdated by its `id` argument and the decision's index,
+ * optionally noting which later decision replaced it. A domain error (e.g.
+ * unknown id, bad index, self-reference) is returned as a readable error
+ * result; unexpected throws propagate.
+ * @returns A handler that marks the decision outdated on the card.
+ */
+export function createMarkDecisionOutdated(): (args: {
+  id: string;
+  index: number;
+  supersededByIndex?: number;
+}) => Promise<CallToolResult> {
+  return async ({ id, index, supersededByIndex }) => {
+    try {
+      return toCardResult(
+        await markDecisionOutdated(id, index, supersededByIndex),
+      );
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);

@@ -3,12 +3,16 @@ import { z } from "zod";
 import {
   cardIdSchema,
   createCardInputSchema,
+  decisionIndexSchema,
+  decisionTextSchema,
   progressNoteSchema,
   statusSchema,
+  supersededByIndexSchema,
   updateTaskInputSchema,
 } from "@/cards/card.schema";
 import { workspaceDeclarationSchema } from "@/cards/card.workspace.service";
 import {
+  createAppendDecision,
   createAppendProgress,
   createClaimCard,
   createCompleteRecurring,
@@ -18,6 +22,7 @@ import {
   createListCards,
   createListRecurringDue,
   createListRecurringRuns,
+  createMarkDecisionOutdated,
   createSetStatus,
   createSetWorkspace,
   createStartRecurring,
@@ -26,14 +31,14 @@ import {
 import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
- * Registers the generic dispatch tools — the eight card tools (`claim_card`,
- * `create_card`, `list_cards`, `append_progress`, `get_card_context`,
- * `set_status`, `set_workspace`, `update_card`) plus the five recurring queue
- * tools (`list_recurring_due`, `list_recurring_runs`, `start_recurring`,
- * `complete_recurring`, `fail_recurring`) — onto an MCP server. Shared by both
- * the stdio factory ({@link createDispatchMcpServer}) and the HTTP route's
- * adapter initializer, so the tool set has a single source of truth across
- * transports.
+ * Registers the generic dispatch tools — the ten card tools (`claim_card`,
+ * `create_card`, `list_cards`, `append_progress`, `append_decision`,
+ * `mark_decision_outdated`, `get_card_context`, `set_status`, `set_workspace`,
+ * `update_card`) plus the five recurring queue tools (`list_recurring_due`,
+ * `list_recurring_runs`, `start_recurring`, `complete_recurring`,
+ * `fail_recurring`) — onto an MCP server. Shared by both the stdio factory
+ * ({@link createDispatchMcpServer}) and the HTTP route's adapter initializer,
+ * so the tool set has a single source of truth across transports.
  * @param server - The MCP server to register the dispatch tools onto.
  */
 export function registerDispatchTools(server: McpServer): void {
@@ -89,6 +94,34 @@ export function registerDispatchTools(server: McpServer): void {
       inputSchema: { id: cardIdSchema, note: progressNoteSchema },
     },
     createAppendProgress(),
+  );
+
+  server.registerTool(
+    "append_decision",
+    {
+      description:
+        "Record a short decision on a card by id, with an optional reason (preserves earlier decisions).",
+      inputSchema: {
+        id: cardIdSchema,
+        decision: decisionTextSchema,
+        why: z.string().optional(),
+      },
+    },
+    createAppendDecision(),
+  );
+
+  server.registerTool(
+    "mark_decision_outdated",
+    {
+      description:
+        "Mark one decision in a card's decision log outdated by id and index, optionally noting which later decision (also by index) replaced it. Only status/supersededByIndex change — the original decision/why text is preserved exactly. Re-marking an already-outdated decision is allowed (not an error).",
+      inputSchema: {
+        id: cardIdSchema,
+        index: decisionIndexSchema,
+        supersededByIndex: supersededByIndexSchema,
+      },
+    },
+    createMarkDecisionOutdated(),
   );
 
   server.registerTool(
@@ -179,7 +212,7 @@ export function registerDispatchTools(server: McpServer): void {
  * Builds the generic dispatch MCP server. Unlike the card-scoped
  * {@link createMcpServer}, it carries no session identity: it constructs the
  * server and delegates tool registration to {@link registerDispatchTools},
- * exposing exactly thirteen tools so any pre-started session can act on any card
+ * exposing exactly fifteen tools so any pre-started session can act on any card
  * (under the `/ai-kanban-work-card` skill's direction) or process the recurring
  * queue.
  * @returns A configured {@link McpServer} ready to connect to a transport.
