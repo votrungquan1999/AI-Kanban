@@ -52,6 +52,15 @@ export function toClientCard(doc: CardDocument): Card {
       at: entry.at.toISOString(),
       note: entry.note,
     })),
+    decisions: (doc.decisions ?? []).map((entry) => ({
+      at: entry.at.toISOString(),
+      decision: entry.decision,
+      ...(entry.why !== undefined ? { why: entry.why } : {}),
+      status: entry.status,
+      ...(entry.supersededByIndex !== undefined
+        ? { supersededByIndex: entry.supersededByIndex }
+        : {}),
+    })),
   };
 }
 

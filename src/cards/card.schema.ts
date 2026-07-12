@@ -60,6 +60,18 @@ export type ParsedCreateCardInput = z.output<typeof createCardInputSchema>;
 /** A single progress note's text; must be non-empty. */
 export const progressNoteSchema = z.string().min(1, "note is required");
 
+/** A single decision's text; trimmed, then must be non-empty (D10 R1). */
+export const decisionTextSchema = z
+  .string()
+  .trim()
+  .min(1, "decision is required");
+
+/** The array index of a decision within a card's `decisions[]` (D10 R8). */
+export const decisionIndexSchema = z.number().int().min(0);
+
+/** The index of the decision that replaced an outdated one; optional. */
+export const supersededByIndexSchema = z.number().int().min(0).optional();
+
 /**
  * Validated input for editing a card's core fields. Every field is optional (a
  * partial patch); only the keys present are changed. Fields are defined

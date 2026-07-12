@@ -29,6 +29,8 @@ export enum EditableField {
   NextAction = "nextAction",
   /** Labels on the card; change detection is order-insensitive (D13). */
   Tags = "tags",
+  /** A decision recorded/marked outdated on the card's durable decision log. */
+  Decision = "decision",
 }
 
 /** Error detail captured on a failure event (for developer investigation). */

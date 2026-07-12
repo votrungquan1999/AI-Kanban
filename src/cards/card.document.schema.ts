@@ -1,6 +1,11 @@
 import { ObjectId } from "mongodb";
 import { z } from "zod";
-import { OriginType, RunState, Status } from "@/cards/card.type";
+import {
+  DecisionStatus,
+  OriginType,
+  RunState,
+  Status,
+} from "@/cards/card.type";
 import {
   CardEventKind,
   EditableField,
@@ -47,6 +52,20 @@ const progressEntrySchema = z.object({
 });
 
 /**
+ * One embedded decision as stored in MongoDB (`at` is a BSON Date). `why` is
+ * `.optional()` only — never `.nullable()` — matching the `progress`/`tags`
+ * absent-tolerant convention: an omitted key parses fine, a stored BSON
+ * `null` would not.
+ */
+const decisionEntrySchema = z.object({
+  at: z.date(),
+  decision: z.string(),
+  why: z.string().optional(),
+  status: z.enum(DecisionStatus),
+  supersededByIndex: z.number().optional(),
+});
+
+/**
  * Validates a raw `cards` document read out of MongoDB. Mirrors the
  * `CardDocument` interface exactly: `ObjectId`/`Date` stay as BSON instances
  * (no coercion), so a drifted doc (e.g. a stringified `_id` or date) fails to
@@ -89,6 +108,8 @@ export const cardDocumentSchema = z.object({
   progress: z.array(progressEntrySchema).optional(),
   // Absent on pre-feature docs; nullable + clearable; mapper coerces absent → null.
   nextAction: z.string().nullable().optional(),
+  // Absent on pre-feature docs (a never-null array); mapper coerces absent → [].
+  decisions: z.array(decisionEntrySchema).optional(),
 });
 
 /**

@@ -199,6 +199,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
     sessionId: parsed.sessionId,
     nextAction: parsed.nextAction,
     progress: [],
+    decisions: [],
   };
 
   await cardsCollection(db).insertOne(doc, { ignoreUndefined: true });

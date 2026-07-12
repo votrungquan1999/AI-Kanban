@@ -77,6 +77,42 @@ export interface ClientProgressEntry {
   note: string;
 }
 
+/** Whether a recorded decision is still current or has been superseded. */
+export enum DecisionStatus {
+  Active = "active",
+  Outdated = "outdated",
+}
+
+/**
+ * One timestamped decision embedded in a card document (BSON Date). `decision`
+ * is required; `why` is an optional short reason. Append-only: once written,
+ * `decision`/`why` are never rewritten — only `status`/`supersededByIndex`
+ * change when the entry is later marked outdated.
+ *
+ * INVARIANT: `decisions[]` is addressed positionally — `markDecisionOutdated`
+ * targets an entry by index and `supersededByIndex` points by index. Entries are
+ * only ever appended, so indices are permanent identifiers. Any future
+ * prune/compaction MUST remap every positional target and `supersededByIndex`
+ * pointer, or it silently corrupts the supersession links.
+ */
+export interface DecisionEntry {
+  at: Date;
+  decision: string;
+  why?: string;
+  status: DecisionStatus;
+  /** Index into the same card's `decisions[]` array that replaced this entry. */
+  supersededByIndex?: number;
+}
+
+/** One decision as exposed to the client — `at` is an ISO string. */
+export interface ClientDecisionEntry {
+  at: string;
+  decision: string;
+  why?: string;
+  status: DecisionStatus;
+  supersededByIndex?: number;
+}
+
 /**
  * A card as stored in MongoDB. Runtime fields are set to defaults/null on
  * create; no logic is built around them in this slice.
@@ -122,6 +158,8 @@ export interface CardDocument {
   progress?: ProgressEntry[];
   /** Forward-looking next step. Absent on pre-feature docs; mapper coerces → null. */
   nextAction?: string | null;
+  /** Durable decision log. Absent on pre-feature docs; mapper coerces → []. */
+  decisions?: DecisionEntry[];
 }
 
 /** A card as exposed to the client — never expose raw documents. */
@@ -151,6 +189,8 @@ export interface Card {
   progress: ClientProgressEntry[];
   /** Forward-looking next step for this card; null when none set. */
   nextAction: string | null;
+  /** Durable decision log; empty array when none. */
+  decisions: ClientDecisionEntry[];
 }
 
 /**

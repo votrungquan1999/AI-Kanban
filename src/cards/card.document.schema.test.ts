@@ -2,7 +2,12 @@ import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
-import { OriginType, RunState, Status } from "@/cards/card.type";
+import {
+  DecisionStatus,
+  OriginType,
+  RunState,
+  Status,
+} from "@/cards/card.type";
 
 /**
  * Builds a raw `cards` document as it would have been stored BEFORE the
@@ -62,6 +67,39 @@ describe("cardDocumentSchema session-tracking back-compat", () => {
     expect(card.tags).toEqual([]);
     expect(card.sessionId).toBeNull();
     expect(card.progress).toEqual([]);
+    expect(card.decisions).toEqual([]);
+  });
+});
+
+describe("cardDocumentSchema decisions", () => {
+  it("round-trips a stored decision entry to the client card with an ISO timestamp", () => {
+    // Given a card document with one decision recorded (BSON Date)
+    const decisionAt = new Date("2026-02-01T00:00:00.000Z");
+    const doc = {
+      ...legacyCardDocWithoutBlockedUntil(),
+      decisions: [
+        {
+          at: decisionAt,
+          decision: "use numeric-index positional updates",
+          why: "indices are stable on an append-only array",
+          status: DecisionStatus.Active,
+        },
+      ],
+    };
+
+    // When it is read back through the parse-on-read boundary and mapped
+    const parsed = cardDocumentSchema.parse(doc);
+    const card = toClientCard(parsed);
+
+    // Then the decision survives with its text, reason, status, and an ISO timestamp
+    expect(card.decisions).toEqual([
+      {
+        at: decisionAt.toISOString(),
+        decision: "use numeric-index positional updates",
+        why: "indices are stable on an append-only array",
+        status: DecisionStatus.Active,
+      },
+    ]);
   });
 });
 
