@@ -30,6 +30,8 @@ Ensures significant changes are well-thought-out and reviewed before implementat
 
 Throughout this skill, `<ws>` refers to that working directory. Scoping artifacts under `./tmp/<identifier>/` lets multiple planning tasks coexist without overwriting each other.
 
+**Before creating `<ws>` or writing anything, check whether it already holds artifacts from unrelated work** (a different ticket/slug, or a stray flat file). If it does, **STOP and ask the user** how to proceed — never overwrite another task's artifacts.
+
 ### Step 1: Research the Codebase
 
 **Goal:** Understand the existing implementation before planning.

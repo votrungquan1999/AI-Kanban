@@ -1,11 +1,11 @@
 ---
-name: feature-development-workflow
-description: Guides feature implementation using incremental development with planning, behavior-driven approach, and progress tracking. Use when implementing features, building functionality, starting new development tasks, or when user says "implement feature", "build this", or "develop this functionality".
+name: feature-dev-lite
+description: Lightweight, single-session feature implementation — incremental planning, behavior-driven tests, and progress tracking for small-to-medium features. Use when building a feature or task solo in one session and you want structure without orchestration overhead ("implement feature", "build this", "develop this functionality"). For large, high-stakes, or multi-phase work needing automated quality gates and parallel sub-agent phases, use orchestrated-feature-dev instead.
 ---
 
-# Feature Development Workflow
+# Feature Dev Lite
 
-This Skill provides a structured approach for implementing features and tasks incrementally with behavior-driven development and progress tracking.
+This Skill is the **lightweight tier** for implementing features and tasks incrementally — behavior-driven development and progress tracking, run solo in a single session. For large or high-stakes work with automated quality gates and parallel sub-agent phases, use `@orchestrated-feature-dev` instead.
 
 ## Core Principles
 
@@ -17,6 +17,7 @@ This Skill provides a structured approach for implementing features and tasks in
 6. **Test Each Step** - Prove each step works before building on top of it
 7. **One Test at a Time** - Write exactly one test, run it, see a meaningful result, make it pass, then move to the next test. This ensures incremental validation and prevents skipping test coverage.
 8. **Meaningful Red** - A red run only counts when a behavior assertion fails. Structural failures (404 route not registered, missing field/import) validate nothing — scaffold structure before running, or expect green from the start when no real red is possible.
+9. **Record Decisions** - When a step involves picking one of 2+ viable options, record it on the AI-Kanban card so the "why" outlives the session (best-effort — see Phase 2).
 
 ---
 
@@ -32,6 +33,12 @@ This Skill provides a structured approach for implementing features and tasks in
 - **Otherwise**, ask the user for a **task identifier** — a ticket id (e.g. `JIRA-123`) or any short label. If they have none, **derive a short kebab-case slug** from the request and **confirm it**. Then use `<ws>` = `./tmp/<identifier>/` and create that directory.
 
 Throughout this skill, `<ws>` refers to that working directory. Scoping artifacts under `./tmp/<identifier>/` lets multiple tasks run in parallel without their plan/progress files colliding.
+
+The identifier also doubles as the `<slug>` for the feature's living spec (`docs/features/<slug>/spec.md`, written at completion). If a spec already exists for this `<slug>`, skim it first — this run **updates** that same spec rather than starting a new one.
+
+**Before creating `<ws>` or writing anything, check whether it already holds artifacts from unrelated work.** If it does, **STOP and ask the user** how to proceed — never overwrite another task's artifacts.
+
+**Drop the spec-reminder sentinel (best-effort).** Write `{ slug, specPath: "docs/features/<slug>/spec.md" }` to `~/.claude/spec-reminder-state/$CLAUDE_CODE_SESSION_ID.json`. This is what the `spec-reminder` Stop hook reads to nudge if code changes this session but the living spec doesn't. Skip silently if `$CLAUDE_CODE_SESSION_ID` is unset.
 
 **Step 1: Understand the Context**
 
@@ -129,6 +136,8 @@ Create the progress file at `<ws>/IMPLEMENTATION_PROGRESS.md` (the task workspac
 11. **Mark step as complete** - Update progress file with ✅ Done, test list, and notes
 12. **Move to next step** - Only after current step is complete
 
+**Record decisions as you go.** Whenever a step involved choosing one of 2+ viable options, record it on the AI-Kanban card (best-effort): `append_decision(cardId, { decision, why? })`, resolving `cardId` from `~/.claude/kanban-session-state/$CLAUDE_CODE_SESSION_ID.json`; skip silently if absent (no card tracked this session). If it supersedes an earlier decision, `mark_decision_outdated(cardId, index)` on the older entry **first** (match it by text via `get_card_context`; skip the mark if you can't locate it unambiguously), then append. Never block the work on a mirror failure.
+
 ### When Writing Tests
 
 **IMPORTANT:** Before writing any tests, locate the "4 Pillars of Testing" document in the project (usually in `.cursor/rules/`, `docs/`, or `repo_knowledge/`). Use it to guide your test writing.
@@ -203,6 +212,13 @@ Follow the guidelines in the 4 Pillars document when defining test scenarios and
 - Use `@test-quality-reviewer` to check recent test quality against the 4 Pillars
 - Use `@code-refactoring` to identify cleanup opportunities in recent implementation
 - Fix any issues before continuing to the next step
+
+## Phase 3: Completion
+
+When the feature is done — all steps complete, tests and lint green:
+
+- **Write/update the living spec.** Write `docs/features/<slug>/spec.md` in the repo you're working on: what the feature does, its behaviors/ACs, and pointers to key files + PRs. `<slug>` is the Step-0 task identifier — reuse it so a later change to the same feature updates the same spec. First search `docs/features/*/` for an existing spec on this feature and **update-in-place** rather than blind-overwriting. No identifier available? Derive a slug from the git branch or ask the operator; if none can be established, **skip the spec write** (don't guess a slug). **Re-read the final diff and make sure the spec reflects the *latest* behavior** — if you updated it early and later work changed behavior, fold that in now. "Present but stale" is a real gap the `spec-reminder` hook can't catch (it only sees whether the file was touched, not whether it's current).
+- **Architectural decision → prompt for an ADR.** If a decision made during this work is *project-level architectural* (affects more than one feature, changes an architectural pattern, or its alternative would force a migration — not a routine implementation choice), **prompt the operator** to record a `docs/adr/NNNN-title.md` (MADR-lean: Title, Status [`accepted | superseded by ADR-NNNN`], Date, Context, Decision, Consequences incl. negatives). **Prompt only — don't auto-draft.** ADRs are immutable: a reversal is a NEW ADR that supersedes the old one (flip the old Status, link both ways), never an edit. This is a different tier from card decisions: card `append_decision` = implementation-level (on the card); an ADR = project-level (in the repo).
 
 ## Related Skills
 

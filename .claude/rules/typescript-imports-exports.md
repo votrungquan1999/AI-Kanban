@@ -24,8 +24,15 @@ export interface Product {
   title: string
 }
 
-export const UserRole = UserRole
-export const ProductStatus = ProductStatus
+export enum UserRole {
+  Admin = 'admin',
+  Member = 'member',
+}
+
+export enum ProductStatus {
+  Active = 'active',
+  Archived = 'archived',
+}
 ```
 
 ❌ Incorrect:

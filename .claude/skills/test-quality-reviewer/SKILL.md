@@ -278,4 +278,4 @@ This Skill uses the 4 Pillars framework to systematically review test quality:
 
 ## Output
 
-Write your complete findings to `./tmp/test-quality-review.md` in the project root (create the `tmp/` directory if it doesn't exist) before finishing, so the caller and user can review the full results.
+Write your complete findings to `./tmp/<identifier>/test-quality-review.md` — where `<identifier>` is the caller-provided workspace, or a short ticket-id/slug you derive for this task (create the folder if needed). **If it already holds artifacts from unrelated work, STOP and ask the user rather than overwriting.** Do this before finishing, so the caller and user can review the full results.

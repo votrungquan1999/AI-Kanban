@@ -69,7 +69,8 @@ function convertSearchParamsToFormState(urlSearchParams: URLSearchParams): FormS
 
 - Use server-side URL handling for initial state
 - Use client-side state management for form interactions
-- Sync state back to URL when necessary using `router.push` or `router.replace`
+- Write state back to the URL from the change handler with `router.replace` — never mirror state to the URL via `useEffect`
+- Read the current params with `useSearchParams` so writes preserve unrelated keys
 
 ✅ Correct:
 
@@ -79,26 +80,35 @@ function convertSearchParamsToFormState(urlSearchParams: URLSearchParams): FormS
 
 export function InvestmentCalculator({ initialFormState }: { initialFormState: FormState }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [formState, setFormState] = useState(initialFormState)
 
-  const updateURL = useCallback((newState: FormState) => {
-    const params = new URLSearchParams()
+  // Write to the URL in the event handler, not in an effect — the change IS the trigger
+  function handleChange(newState: FormState) {
+    setFormState(newState)
+
+    const params = new URLSearchParams(searchParams)
     if (newState.initialAmount) params.set('amount', newState.initialAmount.toString())
     if (newState.period) params.set('period', newState.period)
     if (newState.rate) params.set('rate', newState.rate.toString())
 
     router.replace(`?${params.toString()}`, { scroll: false })
-  }, [router])
-
-  // Update URL when form state changes
-  useEffect(() => {
-    updateURL(formState)
-  }, [formState, updateURL])
+  }
 
   return (
-    // Form JSX
+    // Form JSX calls handleChange on input changes
   )
 }
+```
+
+❌ Incorrect (mirroring state to the URL with an effect):
+
+```tsx
+// Anti-pattern: useEffect + useCallback just to keep the URL in sync
+const updateURL = useCallback((newState: FormState) => { /* ... */ }, [router])
+useEffect(() => {
+  updateURL(formState)
+}, [formState, updateURL])
 ```
 
 ## 4. URL State Best Practices

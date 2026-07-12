@@ -114,7 +114,7 @@ Also record:
 
 ### 5. Write the Report
 
-Write the report to `./tmp/validate-pr-comments.md` in the **original repo** (not the worktree). Create `tmp/` if missing.
+Write the report to `./tmp/<identifier>/validate-pr-comments.md` in the **original repo** (not the worktree) — `<identifier>` is the PR/MR number (or a short slug). Create the folder if missing; **if it already holds artifacts from unrelated work, STOP and ask the user rather than overwriting.**
 
 ```markdown
 ## PR/MR
@@ -179,7 +179,7 @@ Worktree: `<absolute path>` (remove with `git worktree remove <path>` when done)
 
 ## Output
 
-Write the full report to `./tmp/validate-pr-comments.md` before finishing. End your chat reply with the worktree path and the counts line so the user sees the headline result without opening the file.
+Write the full report to `./tmp/<identifier>/validate-pr-comments.md` (the PR/MR-scoped folder from Step 5) before finishing. End your chat reply with the worktree path and the counts line so the user sees the headline result without opening the file.
 
 ## Related Skills
 

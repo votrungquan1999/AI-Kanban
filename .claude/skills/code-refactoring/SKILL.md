@@ -18,7 +18,7 @@ Refactoring is distinct from feature development — the goal is to improve inte
 - Simplifying complex conditionals or deeply nested code
 - Removing duplication across modules
 - Improving naming and code organization
-- As a periodic checkpoint during `@feature-development-workflow`
+- As a periodic checkpoint during `@feature-dev-lite`
 
 ## Instructions
 

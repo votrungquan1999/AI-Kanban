@@ -14,7 +14,7 @@ description: 'Claude Code React composition: server component composition patter
 import { UserProfileCard, UserProfileHeader, UserProfileBody } from './user-profile.ui'
 import { UserProfileProvider } from './user-profile.state'
 
-export default function UserProfile({ userId }: { userId: string }) {
+export default async function UserProfile({ userId }: { userId: string }) {
   const user = await getUserById(userId)
 
   return (
@@ -80,7 +80,7 @@ export function UserProfileCard({ user, onEdit }) {
 import { DashboardGrid, DashboardCard } from './dashboard.ui'
 import { DashboardProvider } from './dashboard.state'
 
-export default function Dashboard() {
+export default async function Dashboard() {
   const stats = await getStats()
   const notifications = await getNotifications()
 

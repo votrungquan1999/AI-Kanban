@@ -10,6 +10,7 @@ Read all workflow state files:
 - `<ws>/RESEARCH_OUTPUT.md`
 - `<ws>/PLAN_STEPS.md`
 - `<ws>/IMPLEMENTATION_PROGRESS.md`
+- `<ws>/DECISIONS.md` (if present — the decision log)
 
 ## Execution
 
@@ -39,6 +40,10 @@ Present to the user:
 ## Quality Gates: [X] checkpoints passed
 - Checkpoint 1 (after steps 1-3): [pass/fixed N issues]
 - Checkpoint 2 (after steps 4-6): [pass/fixed N issues]
+
+## Key Decisions
+[From `<ws>/DECISIONS.md` — each point where 2+ viable options existed and one was chosen. Omit this section only if the decision log is empty.]
+- [choice]: chose [option] over [alternative(s)] — [why]
 
 ## Test Results
 - Total tests: [count]

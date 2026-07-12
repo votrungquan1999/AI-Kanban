@@ -88,7 +88,7 @@ Args:
 
 ## Output
 
-Write your complete findings to `./tmp/docs-lookup.md` in the project root (create the `tmp/` directory if it doesn't exist) before finishing, so the caller and user can review the full results.
+Write your complete findings to `./tmp/<identifier>/docs-lookup.md` — where `<identifier>` is the caller-provided workspace, or a short ticket-id/slug you derive for this task (create the folder if needed). **If it already holds artifacts from unrelated work, STOP and ask the user rather than overwriting.** Do this before finishing, so the caller and user can review the full results.
 
 ## Related Skills
 

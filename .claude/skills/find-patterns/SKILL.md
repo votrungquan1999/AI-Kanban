@@ -53,7 +53,7 @@ Act as a critic to ensure you haven't captured an anti-pattern or a deprecated a
 
 ### Step 5: Document the Pattern (Artifact)
 
-Write the pattern to `./tmp/pattern-<type>.md` in the project root (create the `tmp/` directory if it doesn't exist) using this format:
+Write the pattern to `./tmp/<identifier>/pattern-<type>.md` — where `<identifier>` is the caller-provided workspace, or a short ticket-id/slug you derive for this task (create the folder if needed). **If it already holds artifacts from unrelated work, STOP and ask the user rather than overwriting.** Use this format:
 
 ```markdown
 # Pattern: [Name of Pattern]

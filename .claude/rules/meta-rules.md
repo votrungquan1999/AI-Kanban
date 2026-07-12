@@ -37,6 +37,15 @@ For each task, Claude Code MUST double-check:
 - NEVER use try-catch blocks defensively around every operation.
 - ONLY place try-catch blocks at intentional error boundaries where you want to catch all errors from lower-level code.
 
+## Code Comments
+
+- Write comments to be **skimmed**: short, scannable, and useful at a glance.
+- Explain **WHY**, not WHAT — the code already shows what it does.
+- Prefer one line, one idea. Lead with the key point; keep detail short and after it.
+- NEVER write comments that restate the code or narrate obvious steps.
+- For a complicated function, prefer short comments on each step over one long block at the top — they let a dev follow the logic as they read it.
+- Match the surrounding code's comment density and style.
+
 ## Edit Verification and Retry Logic
 
 - After EVERY file edit operation, MUST verify that the edit was successful.
@@ -60,5 +69,5 @@ For each task, Claude Code MUST double-check:
 
 ## Planning Mode
 
-- When in planning mode and a `.md` file has already been generated, ALWAYS create a new file for any plan changes requested by the user.
-- NEVER modify the existing `.md` file when the user requests changes to the plan.
+- When the user requests changes to an already-generated plan `.md`, modify that plan file in place to reflect the requested changes — keep one source-of-truth plan file rather than creating a new file per revision.
+- Revise only the sections the request affects; preserve the rest of the plan's structure.

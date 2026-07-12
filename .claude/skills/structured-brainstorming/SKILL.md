@@ -26,6 +26,8 @@ This Skill provides a structured approach to brainstorming and problem-solving u
 
 Throughout this skill, `<ws>` refers to that working directory. Scoping brainstorm docs under `./tmp/<identifier>/` lets multiple brainstorms run in parallel without colliding.
 
+**Before creating `<ws>` or writing anything, check whether it already holds artifacts from unrelated work.** If it does, **STOP and ask the user** how to proceed — never overwrite another task's artifacts.
+
 ---
 
 ## Phase 1: Problem Definition
@@ -211,7 +213,7 @@ When helpful, use:
 
 **Not good for:**
 - Quick code fixes (use directly)
-- Well-defined implementation tasks (use feature-development-workflow)
+- Well-defined implementation tasks (use feature-dev-lite)
 - Simple questions with clear answers
 
 ---

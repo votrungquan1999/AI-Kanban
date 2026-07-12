@@ -8,10 +8,9 @@ allowed-tools: Read, Bash, Write
 
 Create a well-structured commit plan by analyzing current git changes and grouping them into semantic commits with detailed descriptions.
 
-## Current Changes
+## Step 0 — Work in the right repo
 
-!`git status --short`
-!`git diff --stat`
+The repo being committed is often not the current dir — you might be in `~/git-repos/personal` while the work is in `quant-trading/`. Infer the repo from the conversation and the files being changed, and work from inside it; ask if the target repo is unclear. Then inspect the working tree with `git status --short` and `git diff --stat`.
 
 ## When to Use
 
@@ -105,7 +104,7 @@ Add unit and E2E tests for workflows functionality across all agents.
 
 ## Output
 
-Write your commit plan to `./tmp/commit-plan.md` in the project root (create the `tmp/` directory if it doesn't exist) before finishing, so the caller and user can review the full plan before execution.
+Write your commit plan to `./tmp/<identifier>/commit-plan.md` — where `<identifier>` is the caller-provided workspace, or a short ticket-id/slug you derive for this task (create the folder if needed). **If it already holds artifacts from unrelated work, STOP and ask the user rather than overwriting.** Do this before finishing, so the caller and user can review the full plan before execution.
 
 ## Related Skills
 
