@@ -28,6 +28,7 @@ function makeCard(partial: Partial<Card> = {}): Card {
     sessionId: null,
     nextAction: null,
     progress: [],
+    decisions: [],
     ...partial,
   };
 }

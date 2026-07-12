@@ -20,6 +20,7 @@ function makeCard(partial: Pick<Card, "id" | "title" | "status">): Card {
     sessionId: null,
     nextAction: null,
     progress: [],
+    decisions: [],
     ...partial,
   };
 }

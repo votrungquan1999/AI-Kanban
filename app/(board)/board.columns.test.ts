@@ -23,6 +23,7 @@ function makeCard(id: string, status: Status): Card {
     sessionId: null,
     nextAction: null,
     progress: [],
+    decisions: [],
   };
 }
 

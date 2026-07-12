@@ -38,6 +38,7 @@ const card: Card = {
   sessionId: null,
   nextAction: null,
   progress: [],
+  decisions: [],
 };
 
 const originalClipboard = Object.getOwnPropertyDescriptor(
