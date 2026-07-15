@@ -40,8 +40,8 @@ active for the session:
 1. Read stdin (`session_id`, `prompt`, `cwd`).
 2. Look up the pointer for `session_id`.
    - No pointer → emit an "open a card if substantive" reminder.
-   - Pointer present → emit the active card # + summary + "new card if diverged, else
-     append" guidance.
+   - Pointer present → emit the active card # + summary + "append to this card; open a
+     new one only on genuine divergence (`forceNew`)" guidance.
 3. If a pointer is present, POST the prompt to the kanban as a progress note
    (`append_progress`, best-effort — a missing config or unreachable endpoint never
    blocks the prompt; the hook always exits 0).

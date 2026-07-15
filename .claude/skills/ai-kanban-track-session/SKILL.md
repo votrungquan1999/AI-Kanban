@@ -28,7 +28,7 @@ You decide silently. Do **not** ask the user "should I track this?" — either t
 
 Each step has its own instruction file in this skill's `steps/` directory — read and follow it:
 
-1. **Open the card** — `steps/1-open-card.md`: gather tags (+ session id if one exists), infer a name, `create_card(...)` (it starts directly `in_progress`), and announce it in one line.
+1. **Open or adopt the card** — `steps/1-open-card.md`: first check whether this session already owns a card (the hook's "Active card #N" line or the pointer file) and **adopt it** if so — tracking is idempotent, one card per unit of work. Otherwise gather tags (+ session id if one exists), infer a name, `create_card(...)` (it starts directly `in_progress`), write the `~/.claude/kanban-session-state/<sessionId>.json` pointer (best-effort, only when a session id exists), and announce it in one line.
 2. **Track progress** — `steps/2-track-progress.md`: as the work reaches meaningful checkpoints, `append_progress(<id>, <note>)` with one concise note each. Don't narrate every keystroke.
 3. **Hand off** — `steps/3-hand-off.md`: when the work is done (or you're parking it), `set_status(<id>, "need_review")`.
 
@@ -36,6 +36,8 @@ Each step has its own instruction file in this skill's `steps/` directory — re
 
 **DO:**
 - Track exactly one card per unit of work — the work you're currently doing.
+- **Adopt, don't duplicate** — if this session already has a live card (per the hook line or the pointer file), reuse it instead of creating another. The pointer file is your memory across a compact; re-read it on resume rather than assuming no card exists.
+- Open a second card only when the work **genuinely diverges** into a distinct task — via `create_card({ …, forceNew: true })`. Never `forceNew` just because a compact made you lose track.
 - Let the dispatch tools own card creation, status, and persistence.
 - Keep progress notes short and state-bearing — what changed and where, not a transcript.
 - Announce the card once, briefly (e.g. "Tracking this as card #N."), then get back to the work.
