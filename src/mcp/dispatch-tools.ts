@@ -90,6 +90,7 @@ export function createCreateCard(): (args: {
   tags: string[];
   sessionId?: string;
   nextAction?: string;
+  forceNew?: boolean;
 }) => Promise<CallToolResult> {
   return async (args) => {
     try {

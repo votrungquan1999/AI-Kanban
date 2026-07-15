@@ -55,7 +55,7 @@ export function registerDispatchTools(server: McpServer): void {
     "create_card",
     {
       description:
-        "Create a session-tracked card that starts directly in_progress, with tags and the session id.",
+        "Create a session-tracked card that starts directly in_progress, with tags and the session id. Idempotent per session: if the session already has a non-terminal card (in_progress, or a parked need_review/staled/blocked card), this adopts THAT card — resuming it to in_progress — instead of opening a duplicate, so it is safe to call again after a context compact. Pass forceNew:true only when the work has diverged into a genuinely distinct task that deserves its own card.",
       inputSchema: createCardInputSchema.shape,
     },
     createCreateCard(),

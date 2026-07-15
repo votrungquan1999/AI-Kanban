@@ -50,6 +50,16 @@ export const createCardInputSchema = z.object({
     .trim()
     .optional()
     .transform((value) => (value ? value : undefined)),
+  // Divergence opt-in: by default a session's create adopts its live card
+  // (one card per session); set this only when the work has split into a
+  // genuinely distinct task that deserves its own card.
+  forceNew: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Open a NEW card even though this session already has a live one — use only when the work diverged into a distinct task. Omit/false to adopt the session's existing card.",
+    ),
 });
 
 /** Caller-facing input for creating a session-tracked card. */

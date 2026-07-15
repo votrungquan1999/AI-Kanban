@@ -1,4 +1,4 @@
-import { type Filter, ObjectId } from "mongodb";
+import { type Db, type Filter, ObjectId } from "mongodb";
 import { reconcileBlockedCards } from "@/cards/card.blocked.service";
 import {
   cardDocumentSchema,
@@ -11,6 +11,7 @@ import {
   cardIdSchema,
   createCardInputSchema,
   createTaskInputSchema,
+  type ParsedCreateCardInput,
   type ParsedCreateTaskInput,
 } from "@/cards/card.schema";
 import { reconcileStaledCards } from "@/cards/card.staled.service";
@@ -156,65 +157,184 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
 }
 
 /**
+ * The dedupeKey a session's card carries, so a single session can never open
+ * two cards for the same work. The first (base) card is keyed
+ * `session:<id>`; an explicit divergence into a distinct task gets a
+ * `:<version>` suffix (`session:<id>:2`, `:3`, …). The partial-unique index on
+ * `dedupeKey` (open cards only) is what actually enforces it.
+ * @param sessionId - The session's handle.
+ * @param version - 1 for the base card, >1 for a diverged card.
+ * @returns The dedupeKey string.
+ */
+function sessionDedupeKey(sessionId: string, version: number): string {
+  return version <= 1
+    ? `session:${sessionId}`
+    : `session:${sessionId}:${version}`;
+}
+
+/**
+ * The statuses a session's card can be adopted from — anything short of
+ * terminal. A card in flight (`in_progress`) or merely parked (`need_review`
+ * awaiting review, `staled` idled out, `blocked` waiting on a dependency) is
+ * still the session's work, so a re-invoked {@link createCard} reclaims it
+ * rather than duplicating. `done`/`archived` are terminal (never adopted); a
+ * session card never sits in `todo`.
+ */
+const ADOPTABLE_SESSION_STATUSES = [
+  Status.InProgress,
+  Status.NeedReview,
+  Status.Staled,
+  Status.Blocked,
+];
+
+/**
+ * The card a session still owns — its most recent non-terminal card, if any.
+ * A non-divergent {@link createCard} adopts this instead of opening a
+ * duplicate, which is what lets tracking survive a memory-wiping compact.
+ * @param db - The database handle.
+ * @param sessionId - The session's handle.
+ * @returns The adoptable card document, or `null` if the session has none.
+ */
+async function findActiveSessionCard(
+  db: Db,
+  sessionId: string,
+): Promise<CardDocument | null> {
+  const [doc] = await findManyZ(
+    cardsCollection(db),
+    { sessionId, status: { $in: ADOPTABLE_SESSION_STATUSES } },
+    cardDocumentSchema,
+    // Sort by the monotonic unique `number`, not createdAt: two rapid creates
+    // can share a millisecond, and "the newest card" must be deterministic.
+    { sort: { number: -1 }, limit: 1 },
+  );
+  return doc ?? null;
+}
+
+/**
+ * Adopt a session's existing card: return it as-is when already `in_progress`,
+ * otherwise resume it (a parked `need_review`/`staled`/`blocked` card the
+ * session is reclaiming) back to `in_progress` so the board reflects active
+ * work. The resume is an audited agent transition — the legal edges into
+ * `in_progress` exist for all three parked statuses.
+ * @param active - The adoptable card document found for the session.
+ * @returns The adopted card in client shape, always `in_progress`.
+ */
+async function adoptSessionCard(active: CardDocument): Promise<Card> {
+  if (active.status === Status.InProgress) return toClientCard(active);
+  return updateTaskStatus(active._id.toHexString(), Status.InProgress, {
+    caller: Caller.Agent,
+  });
+}
+
+/** Backstop on the version-climb loop; far above any real session's card count. */
+const MAX_SESSION_CARD_VERSIONS = 50;
+
+/**
+ * Inserts a fresh session card, climbing the dedupeKey version until it lands
+ * on a free one. On a duplicate-key collision a non-divergent call re-checks
+ * for a live card and adopts it (resolves the concurrent-create race in favor
+ * of one card); a divergent call climbs to the next version.
+ * @param db - The database handle.
+ * @param parsed - The validated session-card input.
+ * @returns The created (or adopted) card in client shape.
+ */
+async function insertSessionCard(
+  db: Db,
+  parsed: ParsedCreateCardInput,
+): Promise<Card> {
+  for (let version = 1; version <= MAX_SESSION_CARD_VERSIONS; version++) {
+    const number = await nextNumber(db, "cards");
+    const now = new Date();
+    const doc: CardDocument = {
+      _id: new ObjectId(),
+      number,
+      title: parsed.title,
+      description: parsed.description,
+      // Starts in_progress / running: a live session is already working it, so it
+      // never sits in the Todo queue. attempts stays 0 — it was never queue-claimed.
+      status: Status.InProgress,
+      priority: 0,
+      origin: { type: OriginType.Manual },
+      // Session cards dedupe on the session handle; session-less callers can't.
+      dedupeKey: parsed.sessionId
+        ? sessionDedupeKey(parsed.sessionId, version)
+        : null,
+      runState: RunState.Running,
+      process: null,
+      attempts: 0,
+      restarts: 0,
+      nextStartAfter: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      pickedAt: now,
+      finishedAt: null,
+      blockedUntil: null,
+      blockInterval: null,
+      workspacePath: null,
+      repos: [],
+      tags: parsed.tags,
+      sessionId: parsed.sessionId,
+      nextAction: parsed.nextAction,
+      progress: [],
+      decisions: [],
+    };
+
+    try {
+      await cardsCollection(db).insertOne(doc, { ignoreUndefined: true });
+    } catch (error) {
+      // This version is held by another open card for the session.
+      if (parsed.sessionId && isDuplicateKeyError(error)) {
+        if (!parsed.forceNew) {
+          const active = await findActiveSessionCard(db, parsed.sessionId);
+          if (active) return adoptSessionCard(active);
+        }
+        continue; // climb to the next free version
+      }
+      throw error;
+    }
+
+    // Single create event: the card was never in Todo, so `from` is null.
+    await emitCardEvent(db, {
+      cardId: doc._id,
+      from: null,
+      to: Status.InProgress,
+      caller: Caller.Agent,
+      outcome: EventOutcome.Success,
+      error: null,
+    });
+
+    return toClientCard(doc);
+  }
+
+  throw new AppError(
+    ErrorCode.Duplicate,
+    `could not allocate a session card version for ${parsed.sessionId}`,
+  );
+}
+
+/**
  * Creates a session-tracked card that starts directly in the in_progress lane
- * (an active session is already working it, so it skips Todo). Mirrors the
- * runtime fields {@link claimCard} sets on pick-up — `runState: Running`,
- * `pickedAt: now` — and stores the session's `tags`/`sessionId` verbatim with an
- * empty progress history. Emits a single `null -> in_progress` create event.
+ * (an active session is already working it, so it skips Todo). Idempotent per
+ * session: a non-divergent call for a session that already has a non-terminal
+ * card ({@link ADOPTABLE_SESSION_STATUSES}) adopts that card — resuming a parked
+ * one to in_progress — rather than opening a duplicate, so repeated calls (e.g.
+ * after a context compact) never fan out into many cards. An explicit
+ * divergence (`forceNew`) opens a fresh, versioned card. Session-less callers
+ * get today's plain create (no dedup possible without a handle).
  * @param input - Caller input; validated against {@link createCardInputSchema}.
- * @returns The created card mapped to the client-facing shape.
+ * @returns The created (or adopted) card mapped to the client-facing shape.
  */
 export async function createCard(input: CreateCardInput): Promise<Card> {
   const parsed = createCardInputSchema.parse(input);
   const db = await getDb();
-  const number = await nextNumber(db, "cards");
-  const now = new Date();
 
-  const doc: CardDocument = {
-    _id: new ObjectId(),
-    number,
-    title: parsed.title,
-    description: parsed.description,
-    // Starts in_progress / running: a live session is already working it, so it
-    // never sits in the Todo queue. attempts stays 0 — it was never queue-claimed.
-    status: Status.InProgress,
-    priority: 0,
-    origin: { type: OriginType.Manual },
-    dedupeKey: null,
-    runState: RunState.Running,
-    process: null,
-    attempts: 0,
-    restarts: 0,
-    nextStartAfter: null,
-    lastError: null,
-    createdAt: now,
-    updatedAt: now,
-    pickedAt: now,
-    finishedAt: null,
-    blockedUntil: null,
-    blockInterval: null,
-    workspacePath: null,
-    repos: [],
-    tags: parsed.tags,
-    sessionId: parsed.sessionId,
-    nextAction: parsed.nextAction,
-    progress: [],
-    decisions: [],
-  };
+  if (parsed.sessionId && !parsed.forceNew) {
+    const active = await findActiveSessionCard(db, parsed.sessionId);
+    if (active) return adoptSessionCard(active);
+  }
 
-  await cardsCollection(db).insertOne(doc, { ignoreUndefined: true });
-
-  // Single create event: the card was never in Todo, so `from` is null.
-  await emitCardEvent(db, {
-    cardId: doc._id,
-    from: null,
-    to: Status.InProgress,
-    caller: Caller.Agent,
-    outcome: EventOutcome.Success,
-    error: null,
-  });
-
-  return toClientCard(doc);
+  return insertSessionCard(db, parsed);
 }
 
 /**
