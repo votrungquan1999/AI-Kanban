@@ -11,7 +11,7 @@ import { CardEventKind } from "@/cards/card-event.type";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
-import { useTestMongo } from "@/test/use-test-mongo";
+import { clearCollectionsEachTest, useTestMongo } from "@/test/use-test-mongo";
 
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
@@ -34,6 +34,7 @@ async function createStaledCard(title: string): Promise<string> {
 
 describe("reviveStaledCard", () => {
   useTestMongo();
+  clearCollectionsEachTest();
 
   it("moves a staled card back to in_progress and audits a system revive", async () => {
     // Given a card parked in the Staled lane
@@ -88,6 +89,7 @@ describe("reviveStaledCard", () => {
 
 describe("reconcileStaledCards", () => {
   useTestMongo();
+  clearCollectionsEachTest();
 
   it("auto-parks an in-progress card untouched for 3+ hours in Staled", async () => {
     // Given an in-progress card whose last touch is more than 3 hours ago

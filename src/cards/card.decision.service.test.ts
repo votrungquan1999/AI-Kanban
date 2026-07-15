@@ -18,7 +18,7 @@ import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
-import { useTestMongo } from "@/test/use-test-mongo";
+import { clearCollectionsEachTest, useTestMongo } from "@/test/use-test-mongo";
 
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
@@ -49,6 +49,7 @@ async function expectRevives(cardId: string, count: number): Promise<void> {
 
 describe("appendDecision", () => {
   useTestMongo();
+  clearCollectionsEachTest();
 
   it("appends a decision to the card's decision history, preserving earlier decisions", async () => {
     // Given an in-progress card with one decision already recorded
@@ -190,6 +191,7 @@ describe("appendDecision", () => {
 
 describe("markDecisionOutdated", () => {
   useTestMongo();
+  clearCollectionsEachTest();
 
   it("marks a decision outdated, records what replaced it, and preserves the original text exactly", async () => {
     // Given a card with two recorded decisions

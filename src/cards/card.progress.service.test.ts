@@ -15,7 +15,7 @@ import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
-import { useTestMongo } from "@/test/use-test-mongo";
+import { clearCollectionsEachTest, useTestMongo } from "@/test/use-test-mongo";
 
 const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
@@ -33,6 +33,7 @@ async function createStaledCard(title: string): Promise<string> {
 
 describe("appendProgress", () => {
   useTestMongo();
+  clearCollectionsEachTest();
 
   it("appends a note to the card's progress history, preserving earlier notes", async () => {
     // Given an in-progress card with one note already recorded
