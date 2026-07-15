@@ -191,6 +191,156 @@ describe("createCard", () => {
     // Then it is trimmed to empty and treated as no next step
     expect(card.nextAction).toBeNull();
   });
+
+  it("adopts the existing in_progress card instead of creating a duplicate for the same session", async () => {
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    // Given a session that already opened a card for its work
+    const first = await createCard({
+      title: "Investigate flaky test",
+      tags: ["backend"],
+      sessionId: "session-dupe-guard",
+    });
+
+    // When the same session creates again (e.g. after a compact wiped its
+    // memory), even under a different title
+    const second = await createCard({
+      title: "Investigate flaky test (resumed)",
+      tags: ["backend"],
+      sessionId: "session-dupe-guard",
+    });
+
+    // Then it adopts the one card already in progress — no second row
+    expect(second.id).toBe(first.id);
+    expect(second.number).toBe(first.number);
+
+    const openForSession = await cardsCollection(db)
+      .find({ sessionId: "session-dupe-guard", status: Status.InProgress })
+      .toArray();
+    expect(openForSession).toHaveLength(1);
+  });
+
+  it("opens a distinct new card on forceNew, and later plain creates adopt the newest", async () => {
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    // Given a session already working a card
+    const base = await createCard({
+      title: "Original task",
+      tags: ["backend"],
+      sessionId: "session-diverge",
+    });
+
+    // When the work splits into a genuinely different task (explicit divergence)
+    const diverged = await createCard({
+      title: "Different task entirely",
+      tags: ["backend"],
+      sessionId: "session-diverge",
+      forceNew: true,
+    });
+
+    // Then a new, distinct card is opened
+    expect(diverged.id).not.toBe(base.id);
+
+    // And a later non-divergent create adopts the newest live card, not the base
+    const resumed = await createCard({
+      title: "Different task (resumed)",
+      tags: ["backend"],
+      sessionId: "session-diverge",
+    });
+    expect(resumed.id).toBe(diverged.id);
+  });
+
+  it("adopts and resumes a need_review card the session handed off, instead of duplicating", async () => {
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    // Given a session that opened a card and handed it off for review
+    const first = await createCard({
+      title: "Ship the feature",
+      tags: ["backend"],
+      sessionId: "session-review",
+    });
+    await updateTaskStatus(first.id, Status.NeedReview, {
+      caller: Caller.Agent,
+    });
+
+    // When the same session creates again (a reviewer-driven continuation)
+    const second = await createCard({
+      title: "Address review feedback",
+      tags: ["backend"],
+      sessionId: "session-review",
+    });
+
+    // Then it adopts the same card and resumes it to in_progress — no duplicate
+    expect(second.id).toBe(first.id);
+    expect(second.status).toBe(Status.InProgress);
+
+    const forSession = await cardsCollection(db)
+      .find({ sessionId: "session-review" })
+      .toArray();
+    expect(forSession).toHaveLength(1);
+  });
+
+  it("adopts and resumes a staled card, instead of duplicating", async () => {
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    // Given a session whose card idled out and was parked in Staled
+    const first = await createCard({
+      title: "Long-running task",
+      tags: ["backend"],
+      sessionId: "session-staled",
+    });
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(first.id) },
+      { $set: { status: Status.Staled } },
+    );
+
+    // When the session resumes and creates again
+    const second = await createCard({
+      title: "Long-running task (resumed)",
+      tags: ["backend"],
+      sessionId: "session-staled",
+    });
+
+    // Then it adopts the same card, resumed to in_progress
+    expect(second.id).toBe(first.id);
+    expect(second.status).toBe(Status.InProgress);
+  });
+
+  it("adopts and resumes a blocked card, instead of duplicating", async () => {
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    // Given a session whose card is blocked waiting on a dependency
+    const first = await createCard({
+      title: "Blocked on infra",
+      tags: ["backend"],
+      sessionId: "session-blocked",
+    });
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(first.id) },
+      {
+        $set: {
+          status: Status.Blocked,
+          blockedUntil: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      },
+    );
+
+    // When the session creates again (the block is resolved / it resumes)
+    const second = await createCard({
+      title: "Unblocked, continuing",
+      tags: ["backend"],
+      sessionId: "session-blocked",
+    });
+
+    // Then it adopts the same card, resumed to in_progress
+    expect(second.id).toBe(first.id);
+    expect(second.status).toBe(Status.InProgress);
+  });
 });
 
 describe("card workspace bookkeeping", () => {
@@ -468,12 +618,12 @@ describe("listCards", () => {
     const backendCard = await createCard({
       title: "backend work",
       tags: ["backend"],
-      sessionId: "session-tags",
+      sessionId: "session-tags-backend",
     });
     const frontendCard = await createCard({
       title: "frontend work",
       tags: ["frontend"],
-      sessionId: "session-tags",
+      sessionId: "session-tags-frontend",
     });
 
     // When surveyed with a tags filter naming only "backend"

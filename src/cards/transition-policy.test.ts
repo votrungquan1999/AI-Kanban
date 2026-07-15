@@ -13,7 +13,7 @@ describe("legalFromStatuses — agent", () => {
       new Set([Status.InProgress, Status.NeedReview]),
     );
     expect(new Set(legalFromStatuses(Caller.Agent, Status.InProgress))).toEqual(
-      new Set([Status.NeedReview, Status.Staled]),
+      new Set([Status.NeedReview, Status.Staled, Status.Blocked]),
     );
     expect(legalFromStatuses(Caller.Agent, Status.Todo)).toEqual([]);
   });
