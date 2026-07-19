@@ -3,7 +3,7 @@
 import { CopyIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useOptimistic } from "react";
-import { type Card, Status } from "@/cards/card.type";
+import { type Card, DecisionStatus, Status } from "@/cards/card.type";
 import { Markdown } from "@/components/markdown/markdown.ui";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +14,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { formatRelativeAge } from "@/lib/relative-time";
+import { cn } from "@/lib/utils";
 import {
   BlockDurationPicker,
   DEFAULT_BLOCK_INTERVAL_MS,
@@ -262,6 +263,62 @@ function CardDetailBody({
           ))
         ) : (
           <span className="text-sm text-muted-foreground">No progress yet</span>
+        )}
+      </div>
+
+      <div className="grid gap-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          Decisions
+        </span>
+        {card.decisions.length > 0 ? (
+          // Number from the original (unreversed) array position — a stable,
+          // permanent 1-based label — then reverse only for display order.
+          // Reversing first and numbering off that position would invert the
+          // numbering (newest would read #1 instead of oldest).
+          card.decisions
+            .map((entry, index) => ({ entry, number: index + 1 }))
+            .reverse()
+            .map(({ entry, number }) => {
+              const isOutdated = entry.status === DecisionStatus.Outdated;
+              // `supersededByIndex` is a 0-based array index; only show the
+              // reference when it resolves to an entry actually on screen —
+              // `=== 0` is valid (falsy!), so check `!= null`, not truthiness.
+              const supersededByNumber =
+                entry.supersededByIndex != null &&
+                entry.supersededByIndex >= 0 &&
+                entry.supersededByIndex < card.decisions.length
+                  ? entry.supersededByIndex + 1
+                  : null;
+              return (
+                <div
+                  key={entry.at}
+                  className={cn(
+                    "grid gap-1 rounded-md bg-muted/50 p-2 text-sm",
+                    isOutdated && "opacity-70",
+                  )}
+                >
+                  <span className="text-xs text-muted-foreground">
+                    #{number} · {formatRelativeAge(entry.at, now ?? new Date())}
+                    {isOutdated ? " · Outdated" : null}
+                  </span>
+                  <Markdown>{entry.decision}</Markdown>
+                  {entry.why ? (
+                    <span className="text-xs text-muted-foreground">
+                      {entry.why}
+                    </span>
+                  ) : null}
+                  {isOutdated && supersededByNumber !== null ? (
+                    <span className="text-xs text-muted-foreground">
+                      Superseded by decision #{supersededByNumber}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            No decisions yet
+          </span>
         )}
       </div>
 

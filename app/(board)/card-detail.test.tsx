@@ -1,8 +1,13 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type Card, OriginType, Status } from "@/cards/card.type";
+import {
+  type Card,
+  DecisionStatus,
+  OriginType,
+  Status,
+} from "@/cards/card.type";
 import { ToastProvider } from "@/components/ui/toast";
 import { CardDetail } from "./card-detail.ui";
 
@@ -310,6 +315,164 @@ describe("CardDetail", () => {
 
     await screen.findByText("Wire the dispatch board");
     expect(screen.getByText("No progress yet")).toBeInTheDocument();
+  });
+
+  it("shows the decisions timeline newest-first when the card has decisions", async () => {
+    const now = new Date("2026-01-03T10:00:00.000Z");
+    const decisionsCard: Card = {
+      ...card,
+      decisions: [
+        {
+          at: "2026-01-01T09:00:00.000Z",
+          decision: "Use polling for status updates",
+          why: "Simpler to implement first",
+          status: DecisionStatus.Active,
+        },
+        {
+          at: "2026-01-02T09:00:00.000Z",
+          decision: "Use websockets for status updates",
+          why: "Polling was too slow in practice",
+          status: DecisionStatus.Active,
+        },
+      ],
+    };
+    renderDetail({ card: decisionsCard, open: true, now });
+
+    const older = await screen.findByText("Use polling for status updates");
+    const newer = screen.getByText("Use websockets for status updates");
+    expect(
+      screen.getByText("Polling was too slow in practice"),
+    ).toBeInTheDocument();
+
+    // Newest-first: the later decision renders before the earlier one in the DOM
+    expect(
+      newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows a 'No decisions yet' placeholder when the card has no decisions", async () => {
+    // The base fixture has decisions: []
+    renderDetail({ card, open: true });
+
+    await screen.findByText("Wire the dispatch board");
+    expect(screen.getByText("No decisions yet")).toBeInTheDocument();
+  });
+
+  it("marks a superseded decision as outdated and shows which decision replaced it", async () => {
+    const supersededCard: Card = {
+      ...card,
+      decisions: [
+        {
+          at: "2026-01-01T09:00:00.000Z",
+          decision: "Use polling for status updates",
+          status: DecisionStatus.Outdated,
+          supersededByIndex: 1,
+        },
+        {
+          at: "2026-01-02T09:00:00.000Z",
+          decision: "Use websockets for status updates",
+          status: DecisionStatus.Active,
+        },
+      ],
+    };
+    renderDetail({ card: supersededCard, open: true });
+
+    await screen.findByText("Use polling for status updates");
+
+    // The outdated entry (originally #1) carries an outdated marker and a
+    // reference to decision #2 (supersededByIndex 1 -> 1-based display 2)
+    expect(screen.getByText(/outdated/i)).toBeInTheDocument();
+    expect(screen.getByText(/superseded by decision #2/i)).toBeInTheDocument();
+
+    // The active entry carries no superseded marker/reference
+    expect(
+      screen.queryByText(/superseded by decision #1/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("numbers decisions by original position, so the newest carries the highest number", async () => {
+    const now = new Date("2026-01-04T10:00:00.000Z");
+    const numberedCard: Card = {
+      ...card,
+      decisions: [
+        {
+          at: "2026-01-01T09:00:00.000Z",
+          decision: "First decision",
+          status: DecisionStatus.Active,
+        },
+        {
+          at: "2026-01-02T09:00:00.000Z",
+          decision: "Second decision",
+          status: DecisionStatus.Active,
+        },
+        {
+          at: "2026-01-03T09:00:00.000Z",
+          decision: "Third decision",
+          status: DecisionStatus.Active,
+        },
+      ],
+    };
+    renderDetail({ card: numberedCard, open: true, now });
+
+    // Numbering derives from unreversed array position: the newest entry (array
+    // index 2, rendered at the top) must read #3, the oldest #1. A bug that
+    // numbered off the reversed display array would label the newest entry #1.
+    const newest = (await screen.findByText("Third decision")).closest(
+      "div.rounded-md",
+    );
+    const oldest = screen.getByText("First decision").closest("div.rounded-md");
+    expect(newest).not.toBeNull();
+    expect(oldest).not.toBeNull();
+    expect(within(newest as HTMLElement).getByText(/#3/)).toBeInTheDocument();
+    expect(within(oldest as HTMLElement).getByText(/#1/)).toBeInTheDocument();
+  });
+
+  it("renders 'superseded by decision #1' when a decision is superseded by the first one (index 0)", async () => {
+    const revertCard: Card = {
+      ...card,
+      decisions: [
+        {
+          at: "2026-01-01T09:00:00.000Z",
+          decision: "Original approach",
+          status: DecisionStatus.Active,
+        },
+        {
+          at: "2026-01-02T09:00:00.000Z",
+          decision: "Experimental approach",
+          status: DecisionStatus.Outdated,
+          supersededByIndex: 0,
+        },
+      ],
+    };
+    renderDetail({ card: revertCard, open: true });
+
+    await screen.findByText("Experimental approach");
+    // supersededByIndex 0 is a valid index but falsy — a truthiness check would
+    // silently drop the reference to the first decision.
+    expect(screen.getByText(/superseded by decision #1/i)).toBeInTheDocument();
+  });
+
+  it("keeps the outdated marker but hides the reference when supersededByIndex points at no row", async () => {
+    const danglingCard: Card = {
+      ...card,
+      decisions: [
+        {
+          at: "2026-01-01T09:00:00.000Z",
+          decision: "Abandoned approach",
+          status: DecisionStatus.Outdated,
+          supersededByIndex: 99,
+        },
+      ],
+    };
+    renderDetail({ card: danglingCard, open: true });
+
+    await screen.findByText("Abandoned approach");
+    // Dangling pointer (no such decision row): still marked outdated, but the
+    // board must not print a reference to a decision that isn't on screen.
+    expect(screen.getByText(/outdated/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/superseded by decision/i),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the remaining time and a Reset timer action for a blocked card", async () => {
