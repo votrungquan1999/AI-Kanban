@@ -87,4 +87,24 @@ describe("createDispatchMcpServer", () => {
 
     await client.close();
   });
+
+  it("cues an agent when to record a decision vs a routine progress note, and that get_card_context returns the decision log", async () => {
+    // Given the generic dispatch server, When a client connects and lists tools
+    const client = await connectClient();
+    const { tools } = await client.listTools();
+    const byName = Object.fromEntries(
+      tools.map((tool) => [tool.name, tool.description]),
+    );
+
+    // Then append_decision cues a choice/tradeoff, distinct from routine progress
+    expect(byName.append_decision).toContain("tradeoff");
+    // And append_progress cues a routine checkpoint, not the why of a choice
+    expect(byName.append_progress).toContain("routine checkpoint");
+    // And get_card_context tells the caller it returns the decision log
+    expect(byName.get_card_context).toContain("decision log");
+    // And mark_decision_outdated tells the caller its index is 0-based
+    expect(byName.mark_decision_outdated).toContain("0-based");
+
+    await client.close();
+  });
 });

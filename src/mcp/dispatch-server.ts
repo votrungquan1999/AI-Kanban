@@ -90,7 +90,7 @@ export function registerDispatchTools(server: McpServer): void {
     "append_progress",
     {
       description:
-        "Append a short timestamped progress note to a card by id (preserves earlier notes).",
+        "Append a short timestamped progress note to a card by id — a routine checkpoint of what changed or where (preserves earlier notes). For the why behind a choice or tradeoff, use append_decision instead.",
       inputSchema: { id: cardIdSchema, note: progressNoteSchema },
     },
     createAppendProgress(),
@@ -100,7 +100,7 @@ export function registerDispatchTools(server: McpServer): void {
     "append_decision",
     {
       description:
-        "Record a short decision on a card by id, with an optional reason (preserves earlier decisions).",
+        "Record a decision on a card by id, with an optional why — a choice, tradeoff, or reversal made along the way (preserves earlier decisions). Distinct from append_progress's routine what-changed/where notes.",
       inputSchema: {
         id: cardIdSchema,
         decision: decisionTextSchema,
@@ -114,7 +114,7 @@ export function registerDispatchTools(server: McpServer): void {
     "mark_decision_outdated",
     {
       description:
-        "Mark one decision in a card's decision log outdated by id and index, optionally noting which later decision (also by index) replaced it. Only status/supersededByIndex change — the original decision/why text is preserved exactly. Re-marking an already-outdated decision is allowed (not an error).",
+        "Mark one decision in a card's decision log outdated by id and index (0-based position in the log), optionally noting which later decision (also a 0-based index) replaced it. Only status/supersededByIndex change — the original decision/why text is preserved exactly. Re-marking an already-outdated decision is allowed (not an error).",
       inputSchema: {
         id: cardIdSchema,
         index: decisionIndexSchema,
@@ -127,7 +127,8 @@ export function registerDispatchTools(server: McpServer): void {
   server.registerTool(
     "get_card_context",
     {
-      description: "Read a card's task context by id.",
+      description:
+        "Read a card's full task context by id, including its decision log — read it before resuming work to see prior decisions.",
       inputSchema: { id: cardIdSchema },
     },
     createGetCardContext(),
