@@ -16,38 +16,16 @@ export enum Caller {
 }
 
 /**
- * The agent's legal `(from → to)` lifecycle edges. The human UI is
- * unconstrained (any → any); the scheduler has no agent-exposed edge in this
- * slice. Used to enforce moves atomically (the from-set feeds a `$in` filter).
- */
-const AGENT_EDGES: ReadonlyArray<readonly [Status, Status]> = [
-  [Status.InProgress, Status.NeedReview],
-  [Status.InProgress, Status.Done],
-  [Status.NeedReview, Status.InProgress],
-  [Status.NeedReview, Status.Done],
-  // A resumed session reclaims its parked card out of Staled or Blocked (e.g.
-  // create_card adopting the session's card when it re-invokes after a compact).
-  [Status.Staled, Status.InProgress],
-  [Status.Blocked, Status.InProgress],
-];
-
-/**
- * The source statuses from which `caller` may legally move a card to `to`.
- * UI → every status (any → any). Agent → only the from-statuses of its legal
- * edges into `to` (possibly empty, e.g. `to = todo`). Any other caller → none.
+ * The source statuses from which `caller` may legally move a card, independent
+ * of the target: UI and Agent → every status (any → any, full parity with a
+ * human operator); any other caller → none.
  * @param caller - The requesting caller.
- * @param to - The target status.
+ * @param _to - The target status (unused now that every eligible caller is any → any; kept for call-site stability).
  * @returns The legal source statuses (empty if the move is not permitted).
  */
-export function legalFromStatuses(caller: Caller, to: Status): Status[] {
-  if (caller === Caller.Ui) {
+export function legalFromStatuses(caller: Caller, _to: Status): Status[] {
+  if (caller === Caller.Ui || caller === Caller.Agent) {
     return Object.values(Status);
-  }
-
-  if (caller === Caller.Agent) {
-    return AGENT_EDGES.filter(([, target]) => target === to).map(
-      ([from]) => from,
-    );
   }
 
   return [];
