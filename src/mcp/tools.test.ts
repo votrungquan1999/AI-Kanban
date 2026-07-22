@@ -79,20 +79,21 @@ describe("set_my_status handler", () => {
     });
   });
 
-  it("returns an error result when the edge is illegal", async () => {
-    // Given a card still in todo (not a legal agent source for done)
+  it("moves the bound card along a once-illegal agent edge now that any->any parity applies", async () => {
+    // Given a card still in todo (previously not a legal agent source for done)
     const created = await createTask({
-      title: "agent overreaches",
+      title: "agent jumps directly to done",
       origin: { type: OriginType.Manual },
     });
 
-    // When the agent attempts the illegal todo -> done edge
+    // When the agent jumps straight todo -> done (any->any parity, Step 1)
     const result = await createSetMyStatus(created.id)({ status: Status.Done });
 
-    // Then it comes back as a readable error carrying the ERR_* code
-    expect(result.isError).toBe(true);
+    // Then the move succeeds and the bound card lands at done
+    expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toMatchObject({
-      code: ErrorCode.InvalidTransition,
+      id: created.id,
+      status: Status.Done,
     });
   });
 });

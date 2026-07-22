@@ -55,7 +55,7 @@ export function registerDispatchTools(server: McpServer): void {
     "create_card",
     {
       description:
-        "Create a session-tracked card that starts directly in_progress, with tags and the session id. Idempotent per session: if the session already has a non-terminal card (in_progress, or a parked need_review/staled/blocked card), this adopts THAT card — resuming it to in_progress — instead of opening a duplicate, so it is safe to call again after a context compact. Pass forceNew:true only when the work has diverged into a genuinely distinct task that deserves its own card.",
+        "Create a card, with tags and an optional nextAction. By default (or status:in_progress) it starts directly in_progress as a session-tracked card carrying the session id — idempotent per session: if the session already has a non-terminal card (in_progress, or a parked need_review/staled/blocked card), this adopts THAT card — resuming it to in_progress — instead of opening a duplicate, so it is safe to call again after a context compact. Pass forceNew:true only when the work has diverged into a genuinely distinct task that deserves its own card. Pass any other status (todo/done/blocked/need_review/staled/archived) to file a standalone, session-less card at that placement instead — initialized coherently (done stamps finishedAt now, blocked starts the board-default countdown).",
       inputSchema: createCardInputSchema.shape,
     },
     createCreateCard(),
@@ -138,8 +138,12 @@ export function registerDispatchTools(server: McpServer): void {
     "set_status",
     {
       description:
-        "Move a card to a new status by id along a legal agent edge.",
-      inputSchema: { id: cardIdSchema, status: statusSchema },
+        "Move a card to any status by id — the agent has full any-to-any parity with a person on the webview. Pass force:true only if the move is refused with ERR_DUPLICATE — it displaces the card currently holding the session's dedupeKey slot; confirm with the user before using it.",
+      inputSchema: {
+        id: cardIdSchema,
+        status: statusSchema,
+        force: z.boolean().optional(),
+      },
     },
     createSetStatus(),
   );

@@ -1,14 +1,19 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { createTask, updateTaskStatus } from "@/cards/card.service";
-import { OriginType, Status } from "@/cards/card.type";
+import type { CardDocument } from "@/cards/card.type";
+import { OriginType, RunState, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
+import { cardsCollection } from "@/db/collections";
+import { bootstrapIndexes } from "@/db/indexes";
+import { getDb } from "@/db/mongo";
 import {
   createAppendDecision,
   createClaimCard,
+  createCreateCard,
   createGetCardContext,
   createMarkDecisionOutdated,
   createSetStatus,
@@ -57,6 +62,27 @@ describe("claim_card handler", () => {
     // And an unknown id is reported the same readable way (not a throw)
     const unknown = await claim({ id: new ObjectId().toHexString() });
     expect(unknown.isError).toBe(true);
+  });
+});
+
+describe("create_card handler", () => {
+  useTestMongo();
+
+  it("files a standalone todo card when status is given (D12/D14 forwarded from the schema)", async () => {
+    // When the create_card tool is invoked with status: todo
+    const result = await createCreateCard()({
+      title: "backlog via tool",
+      tags: [],
+      status: Status.Todo,
+    });
+
+    // Then a session-less standalone todo card comes back
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      title: "backlog via tool",
+      status: Status.Todo,
+      sessionId: null,
+    });
   });
 });
 
@@ -118,28 +144,101 @@ describe("set_status handler", () => {
     expect(moved).toBeDefined();
   });
 
-  it("refuses an illegal status change as a readable error, leaving the card unchanged", async () => {
-    // Given a card still in todo (not a legal agent source for done)
+  it("moves a card along a once-illegal agent edge now that any->any parity applies, and records it", async () => {
+    // Given a card still in todo (previously not a legal agent source for done)
     const created = await createTask({
-      title: "illegal move",
+      title: "todo to done directly",
       origin: { type: OriginType.Manual },
     });
 
-    // When the status tool attempts the illegal todo -> done edge
+    // When the status tool jumps straight todo -> done (any->any parity, Step 1)
     const result = await createSetStatus()({
       id: created.id,
       status: Status.Done,
     });
 
-    // Then it comes back as a readable error carrying the ERR_* code
-    expect(result.isError).toBe(true);
+    // Then the move succeeds and the card lands at done
+    expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toMatchObject({
-      code: ErrorCode.InvalidTransition,
+      id: created.id,
+      status: Status.Done,
     });
 
-    // And the card's status is unchanged
-    const after = await createGetCardContext()({ id: created.id });
-    expect(after.structuredContent).toMatchObject({ status: Status.Todo });
+    // And the change is recorded in the audit log
+    const events = await listCardEvents(created.id);
+    const moved = events.find(
+      (e) =>
+        e.kind === CardEventKind.StatusTransition &&
+        e.to === Status.Done &&
+        e.outcome === EventOutcome.Success,
+    );
+    expect(moved).toBeDefined();
+  });
+
+  it("with force:true, displaces the current open holder on a dedupeKey collision (D13)", async () => {
+    // Given a session's terminal card (done) that still carries its session
+    // dedupeKey, and the SAME session's live open card (in_progress) holding
+    // that same key — coexisting because `done` sits outside OPEN_STATUSES
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const now = new Date();
+    const staleDone: CardDocument = {
+      _id: new ObjectId(),
+      number: 101,
+      title: "stale terminal card",
+      status: Status.Done,
+      priority: 0,
+      origin: { type: OriginType.Manual },
+      dedupeKey: "session:tool-collide",
+      runState: RunState.Idle,
+      process: null,
+      attempts: 0,
+      restarts: 0,
+      nextStartAfter: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      pickedAt: now,
+      finishedAt: now,
+      workspacePath: null,
+      repos: [],
+    };
+    const liveOpen: CardDocument = {
+      _id: new ObjectId(),
+      number: 102,
+      title: "session's live card",
+      status: Status.InProgress,
+      priority: 0,
+      origin: { type: OriginType.Manual },
+      dedupeKey: "session:tool-collide",
+      runState: RunState.Idle,
+      process: null,
+      attempts: 0,
+      restarts: 0,
+      nextStartAfter: null,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+      pickedAt: now,
+      finishedAt: null,
+      workspacePath: null,
+      repos: [],
+    };
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    // When the set_status tool revives the stale card with force:true
+    const result = await createSetStatus()({
+      id: staleDone._id.toHexString(),
+      status: Status.InProgress,
+      force: true,
+    });
+
+    // Then the move succeeds — force overrode the duplicate collision
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      id: staleDone._id.toHexString(),
+      status: Status.InProgress,
+    });
   });
 });
 

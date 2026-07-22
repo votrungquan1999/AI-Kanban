@@ -112,19 +112,20 @@ export function createGetMyTask(cardId: string): () => Promise<CallToolResult> {
 
 /**
  * Builds the `set_my_status` handler bound to a single card. The agent moves
- * only its own card, and only along its legal lifecycle edges (enforced by the
- * service as the {@link Caller.Agent} caller); an illegal move or missing card
+ * only its own card, but to any status (any-to-any parity with the webview,
+ * enforced by the service as the {@link Caller.Agent} caller); a missing card
  * is returned as a readable error result.
  * @param cardId - The card the session is scoped to.
  * @returns A handler that applies the requested status to the bound card.
  */
 export function createSetMyStatus(
   cardId: string,
-): (args: { status: Status }) => Promise<CallToolResult> {
-  return async ({ status }) => {
+): (args: { status: Status; force?: boolean }) => Promise<CallToolResult> {
+  return async ({ status, force }) => {
     try {
       const card = await updateTaskStatus(cardId, status, {
         caller: Caller.Agent,
+        force,
       });
       return toCardResult(card);
     } catch (error) {

@@ -78,11 +78,12 @@ export function createClaimCard(): (args: {
 }
 
 /**
- * Builds the generic `create_card` handler: a session starts tracking its work
- * as a card that lands directly in_progress, carrying the session's labels and
- * handle. A domain error (e.g. invalid input) is returned as a readable error
- * result; unexpected throws propagate.
- * @returns A handler that creates the session-tracked card from its arguments.
+ * Builds the generic `create_card` handler: by default (or status:in_progress)
+ * a session starts tracking its work as a card that lands directly in_progress,
+ * carrying the session's labels and handle; any other status files a standalone,
+ * session-less card at that placement. A domain error (e.g. invalid input) is
+ * returned as a readable error result; unexpected throws propagate.
+ * @returns A handler that creates the card from its arguments.
  */
 export function createCreateCard(): (args: {
   title: string;
@@ -91,6 +92,7 @@ export function createCreateCard(): (args: {
   sessionId?: string;
   nextAction?: string;
   forceNew?: boolean;
+  status?: Status;
 }) => Promise<CallToolResult> {
   return async (args) => {
     try {
@@ -246,19 +248,23 @@ export function createGetCardContext(): (args: {
 }
 
 /**
- * Builds the generic `set_status` handler, moving any card to a new status by
- * its `id` argument as the agent caller. An illegal transition (or missing card)
- * is returned as a readable error result rather than thrown; the underlying
- * `updateTaskStatus` enforces the policy and emits the audit row.
+ * Builds the generic `set_status` handler, moving any card to any status by
+ * its `id` argument as the agent caller (any-to-any parity with the webview).
+ * A missing card is returned as a readable error result rather than thrown;
+ * the underlying `updateTaskStatus` emits the audit row.
  * @returns A handler that applies the requested status to the card.
  */
 export function createSetStatus(): (args: {
   id: string;
   status: Status;
+  force?: boolean;
 }) => Promise<CallToolResult> {
-  return async ({ id, status }) => {
+  return async ({ id, status, force }) => {
     try {
-      const card = await updateTaskStatus(id, status, { caller: Caller.Agent });
+      const card = await updateTaskStatus(id, status, {
+        caller: Caller.Agent,
+        force,
+      });
       return toCardResult(card);
     } catch (error) {
       if (error instanceof AppError) {
