@@ -118,9 +118,9 @@ describe("card events — failure", () => {
       origin: { type: OriginType.Manual },
     });
 
-    // When the agent attempts the illegal todo -> done edge (rejected)
+    // When a caller with no legal edges (scheduler) attempts todo -> done (rejected)
     await expect(
-      updateTaskStatus(card.id, Status.Done, { caller: Caller.Agent }),
+      updateTaskStatus(card.id, Status.Done, { caller: Caller.Scheduler }),
     ).rejects.toMatchObject({ code: ErrorCode.InvalidTransition });
 
     // Then a failure event with the attempted to + error code is recorded
@@ -131,7 +131,7 @@ describe("card events — failure", () => {
     expect(failure).toMatchObject({
       from: Status.Todo,
       to: Status.Done,
-      caller: Caller.Agent,
+      caller: Caller.Scheduler,
       outcome: EventOutcome.Failure,
       error: { code: ErrorCode.InvalidTransition },
     });

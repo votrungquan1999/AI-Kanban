@@ -60,6 +60,10 @@ export const createCardInputSchema = z.object({
     .describe(
       "Open a NEW card even though this session already has a live one — use only when the work diverged into a distinct task. Omit/false to adopt the session's existing card.",
     ),
+  // D12/D14: omitted/in_progress keeps today's session-tracking create
+  // (adopt/dedupe); any other status files a session-less standalone card,
+  // initialized coherently for that placement (see insertStandaloneCard).
+  status: statusSchema.optional().default(Status.InProgress),
 });
 
 /** Caller-facing input for creating a session-tracked card. */

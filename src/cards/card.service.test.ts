@@ -1,5 +1,5 @@
-import { ObjectId } from "mongodb";
-import { describe, expect, it } from "vitest";
+import { Collection, ObjectId } from "mongodb";
+import { describe, expect, it, vi } from "vitest";
 import {
   createCard,
   createTask,
@@ -340,6 +340,164 @@ describe("createCard", () => {
     // Then it adopts the same card, resumed to in_progress
     expect(second.id).toBe(first.id);
     expect(second.status).toBe(Status.InProgress);
+  });
+
+  it("still lands in_progress and session-tracked when no status is named", async () => {
+    // Given a session that names no explicit column at all
+    // When it creates a card
+    const card = await createCard({
+      title: "No status named",
+      tags: [],
+      sessionId: "session-no-status",
+    });
+
+    // Then it defaults to in_progress via the existing session-tracking path
+    expect(card.status).toBe(Status.InProgress);
+    expect(card.pickedAt).not.toBeNull();
+    expect(card.sessionId).toBe("session-no-status");
+  });
+});
+
+describe("createCard with an explicit non-in_progress status (D12/D14 standalone placements)", () => {
+  useTestMongo();
+
+  it("files a standalone card in an idle column, never adopting or tracking a session", async () => {
+    // Given an agent filing a card straight into the backlog, with tags and a
+    // next step, but no session handle
+    const card = await createCard({
+      title: "Investigate flaky CI",
+      tags: ["backend"],
+      nextAction: "Check the last 5 failing runs",
+      status: Status.Todo,
+    });
+
+    // Then it lands in Todo, idle (never picked up), with no dedupeKey or
+    // session — a plain standalone card, not session-tracked
+    expect(card.status).toBe(Status.Todo);
+    expect(card.pickedAt).toBeNull();
+    expect(card.sessionId).toBeNull();
+    expect(card.tags).toEqual(["backend"]);
+    expect(card.nextAction).toBe("Check the last 5 failing runs");
+
+    const db = await getDb();
+    const doc = await cardsCollection(db).findOne({
+      _id: new ObjectId(card.id),
+    });
+    expect(doc?.runState).toBe(RunState.Idle);
+    expect(doc?.dedupeKey).toBeNull();
+    expect(doc && "sessionId" in doc).toBe(false);
+  });
+
+  it("files a card already-done, stamping it finished immediately", async () => {
+    // Given an agent filing a card that's already complete
+    // When it creates the card with status "done"
+    const card = await createCard({
+      title: "Already-finished chore",
+      tags: [],
+      status: Status.Done,
+    });
+
+    // Then it lands Done, finished now — not an idle placement waiting to be
+    // picked up
+    expect(card.status).toBe(Status.Done);
+    expect(card.finishedAt).not.toBeNull();
+  });
+
+  it("files a card already-blocked, starting the board-default countdown", async () => {
+    // Given an agent filing a card that's already blocked on something
+    // When it creates the card with status "blocked" (no interval to pick — a
+    // create carries no `intervalMs` param)
+    const card = await createCard({
+      title: "Blocked on infra from the start",
+      tags: [],
+      status: Status.Blocked,
+    });
+
+    // Then it lands Blocked with the board-default countdown running, exactly
+    // like a fresh move into Blocked with no explicit interval
+    expect(card.status).toBe(Status.Blocked);
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    expect(card.blockInterval).toBe(TWO_HOURS_MS);
+    const deadlineMs = new Date(card.blockedUntil as string).getTime();
+    expect(Math.abs(deadlineMs - (Date.now() + TWO_HOURS_MS))).toBeLessThan(
+      60_000,
+    );
+  });
+
+  it("rejects an unrecognized status value as a readable validation error (D11)", async () => {
+    // Given an agent filing a card with a status outside the Status enum
+    // When it creates the card
+    // Then it is rejected as a validation error, not a raw parser exception
+    await expect(
+      createCard({
+        title: "Bad status card",
+        tags: [],
+        status: "bogus" as Status,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.Validation });
+  });
+
+  it("writes no card when the status value is unrecognized (Step 8 gap)", async () => {
+    // Given the current count of cards in the collection
+    const db = await getDb();
+    const countBefore = await cardsCollection(db).countDocuments({});
+
+    // When an agent files a card with a status outside the Status enum
+    // Then the rejection is validation-only — no card is left behind
+    await expect(
+      createCard({
+        title: "Bad status card, take two",
+        tags: [],
+        status: "bogus" as Status,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.Validation });
+
+    const countAfter = await cardsCollection(db).countDocuments({});
+    expect(countAfter).toBe(countBefore);
+  });
+
+  it("never touches or duplicates the session's active card when filed standalone under the same sessionId (D14 branch order)", async () => {
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    // Given a session with a live in_progress card
+    const original = await createCard({
+      title: "Session's live work",
+      tags: ["backend"],
+      sessionId: "S",
+    });
+    expect(original.status).toBe(Status.InProgress);
+
+    // When the same session also files a standalone todo card
+    const standalone = await createCard({
+      title: "Filed backlog item",
+      tags: [],
+      status: Status.Todo,
+      sessionId: "S",
+    });
+
+    // Then the session's original card is unchanged
+    const reloaded = await cardsCollection(db).findOne({
+      _id: new ObjectId(original.id),
+    });
+    expect(reloaded?.status).toBe(Status.InProgress);
+    expect(reloaded?._id.toHexString()).toBe(original.id);
+
+    // And the new card is session-less, not adopted/tracked
+    expect(standalone.sessionId).toBeNull();
+    expect(standalone.status).toBe(Status.Todo);
+    const standaloneDoc = await cardsCollection(db).findOne({
+      _id: new ObjectId(standalone.id),
+    });
+    expect(standaloneDoc?.dedupeKey).toBeNull();
+
+    // And an exact sessionId query returns only the original — no duplicate,
+    // no resumed/adopted standalone
+    const forSession = await cardsCollection(db)
+      .find({ sessionId: "S" })
+      .toArray();
+    expect(forSession).toHaveLength(1);
+    expect(forSession[0]?._id.toHexString()).toBe(original.id);
   });
 });
 
@@ -936,21 +1094,21 @@ describe("updateTaskStatus", () => {
     expect(done.pickedAt).toBe(inProgress.pickedAt);
   });
 
-  it("rejects an agent move from an illegal source status", async () => {
-    // Given a card still in todo (not a legal agent source for done)
+  it("lets the agent jump straight todo -> done (any-to-any parity with the UI)", async () => {
+    // Given a fresh todo card
     const card = await createTask({
       title: "agent jumps the queue",
       origin: { type: OriginType.Manual },
     });
 
-    // When the agent tries the illegal todo -> done edge, Then it is rejected
-    await expect(
-      updateTaskStatus(card.id, Status.Done, { caller: Caller.Agent }),
-    ).rejects.toMatchObject({ code: ErrorCode.InvalidTransition });
+    // When the agent moves it directly to done (full parity with the human UI)
+    const done = await updateTaskStatus(card.id, Status.Done, {
+      caller: Caller.Agent,
+    });
 
-    // And the card is unchanged (still todo)
-    const after = await getTask(card.id);
-    expect(after.status).toBe(Status.Todo);
+    // Then it succeeds and stamps finishedAt
+    expect(done.status).toBe(Status.Done);
+    expect(done.finishedAt).not.toBeNull();
   });
 
   it("lets the agent resume a parked (stale) card back into progress", async () => {
@@ -989,5 +1147,344 @@ describe("updateTaskStatus", () => {
         caller: Caller.Agent,
       }),
     ).rejects.toMatchObject({ code: ErrorCode.NotFound });
+  });
+
+  it("records an audited Success event for an agent's in_progress -> in_progress self-move (R7)", async () => {
+    // Given a card already in_progress
+    const card = await createTask({
+      title: "self move me",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(card.id, Status.InProgress);
+
+    // When the agent moves it to the SAME status (a self-move, from==to)
+    const selfMoved = await updateTaskStatus(card.id, Status.InProgress, {
+      caller: Caller.Agent,
+    });
+
+    // Then it succeeds and is recorded as an audited Success event with
+    // from==to — the event model has no from!==to guard
+    expect(selfMoved.status).toBe(Status.InProgress);
+    const events = await listCardEvents(card.id);
+    const selfMoveEvent = events.find(
+      (event) =>
+        event.kind === CardEventKind.StatusTransition &&
+        event.from === Status.InProgress &&
+        event.to === Status.InProgress,
+    );
+    expect(selfMoveEvent).toMatchObject({
+      outcome: EventOutcome.Success,
+      caller: Caller.Agent,
+    });
+  });
+
+  it("leaves pickedAt null on a bypass move that never enters in_progress (R21)", async () => {
+    // Given a fresh todo card that has never been picked up
+    const card = await createTask({
+      title: "never picked up",
+      origin: { type: OriginType.Manual },
+    });
+    expect(card.pickedAt).toBeNull();
+
+    // When the agent moves it directly todo -> need_review, bypassing
+    // in_progress entirely
+    const moved = await updateTaskStatus(card.id, Status.NeedReview, {
+      caller: Caller.Agent,
+    });
+
+    // Then pickedAt is still null — the pickedAt side effect only fires on a
+    // move INTO in_progress, which this move never touches
+    expect(moved.status).toBe(Status.NeedReview);
+    expect(moved.pickedAt).toBeNull();
+  });
+});
+
+/**
+ * A valid CardDocument for the collision/force tests, overridable per field.
+ * These tests share one DB (no per-test wipe), so each caller passes a unique
+ * `number` and `dedupeKey`; the stale-holder vs live-holder pairs then differ
+ * only in `status` and `finishedAt`.
+ */
+function makeCard(overrides: Partial<CardDocument> = {}): CardDocument {
+  const now = new Date();
+  return {
+    _id: new ObjectId(),
+    number: 1,
+    title: "card",
+    status: Status.InProgress,
+    priority: 0,
+    origin: { type: OriginType.Manual },
+    dedupeKey: null,
+    runState: RunState.Idle,
+    process: null,
+    attempts: 0,
+    restarts: 0,
+    nextStartAfter: null,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+    pickedAt: now,
+    finishedAt: null,
+    workspacePath: null,
+    repos: [],
+    ...overrides,
+  };
+}
+
+describe("updateTaskStatus dedupeKey collision", () => {
+  useTestMongo();
+
+  it("refuses reviving a stale card into a slot its session's open card already holds (D13)", async () => {
+    // Given a session's terminal card (done) that still carries its session
+    // dedupeKey, and the SAME session's live open card (in_progress) holding
+    // that same key — both can coexist because `done` sits outside
+    // OPEN_STATUSES, so the partial-unique index doesn't see a collision yet
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 1,
+      status: Status.Done,
+      dedupeKey: "session:collide",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 2,
+      status: Status.InProgress,
+      dedupeKey: "session:collide",
+    });
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    // When the agent revives the stale card back into in_progress (legal
+    // any->any since Step 1) — its dedupeKey now collides with the live card's
+    await expect(
+      updateTaskStatus(staleDone._id.toHexString(), Status.InProgress, {
+        caller: Caller.Agent,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.Duplicate });
+  });
+
+  it("with force, displaces the current open holder and the revived card takes over the identity (D13)", async () => {
+    // Given the same colliding pair: a stale done card and the session's live
+    // open card sharing one dedupeKey
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 3,
+      status: Status.Done,
+      dedupeKey: "session:collide-force",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 4,
+      status: Status.InProgress,
+      dedupeKey: "session:collide-force",
+    });
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    // When the agent revives the stale card with force:true
+    const revived = await updateTaskStatus(
+      staleDone._id.toHexString(),
+      Status.InProgress,
+      { caller: Caller.Agent, force: true },
+    );
+
+    // Then the move succeeds and the revived card takes over the identity
+    expect(revived.status).toBe(Status.InProgress);
+    const revivedDoc = await cardsCollection(db).findOne({
+      _id: staleDone._id,
+    });
+    expect(revivedDoc?.dedupeKey).toBe("session:collide-force");
+
+    // And the previously-open holder is displaced (dedupeKey cleared)
+    const displacedDoc = await cardsCollection(db).findOne({
+      _id: liveOpen._id,
+    });
+    expect(displacedDoc?.dedupeKey).toBeNull();
+
+    // And exactly one open card now carries the key — no lingering duplicate
+    const openHolders = await cardsCollection(db)
+      .find({
+        dedupeKey: "session:collide-force",
+        status: { $in: [Status.Todo, Status.InProgress, Status.NeedReview] },
+      })
+      .toArray();
+    expect(openHolders).toHaveLength(1);
+    expect(openHolders[0]?._id).toEqual(staleDone._id);
+  });
+
+  it("records a Failure card-event on the attempted card when a collision is rejected without force (D16/D19)", async () => {
+    // Given the same colliding pair as the no-force rejection test above
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 5,
+      status: Status.Done,
+      dedupeKey: "session:collide-audit",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 6,
+      status: Status.InProgress,
+      dedupeKey: "session:collide-audit",
+    });
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    // When the agent revives the stale card without force, colliding as before
+    await expect(
+      updateTaskStatus(staleDone._id.toHexString(), Status.InProgress, {
+        caller: Caller.Agent,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.Duplicate });
+
+    // Then exactly one Failure event is recorded on the ATTEMPTED card (not the
+    // holder) — asserting the count guards against a future double-emit.
+    const events = await listCardEvents(staleDone._id.toHexString());
+    const failureEvents = events.filter(
+      (event) => event.outcome === EventOutcome.Failure,
+    );
+    expect(failureEvents).toHaveLength(1);
+    expect(failureEvents[0]).toMatchObject({
+      kind: CardEventKind.StatusTransition,
+      from: Status.Done,
+      to: Status.InProgress,
+      caller: Caller.Agent,
+      outcome: EventOutcome.Failure,
+      error: { code: ErrorCode.Duplicate },
+    });
+  });
+
+  it("records a same-status Success card-event on the displaced holder when force clears its dedupeKey (D16/D19)", async () => {
+    // Given the same colliding pair as the force-displacement test above
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 7,
+      status: Status.Done,
+      dedupeKey: "session:collide-force-audit",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 8,
+      status: Status.InProgress,
+      dedupeKey: "session:collide-force-audit",
+    });
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    // When the agent revives the stale card with force:true
+    await updateTaskStatus(staleDone._id.toHexString(), Status.InProgress, {
+      caller: Caller.Agent,
+      force: true,
+    });
+
+    // Then the displaced holder gets exactly one same-status Success event
+    // recording that its dedupeKey was cleared (from/to unchanged — its status)
+    const holderEvents = await listCardEvents(liveOpen._id.toHexString());
+    const displacementEvents = holderEvents.filter(
+      (event) => event.outcome === EventOutcome.Success,
+    );
+    expect(displacementEvents).toHaveLength(1);
+    expect(displacementEvents[0]).toMatchObject({
+      kind: CardEventKind.StatusTransition,
+      from: Status.InProgress,
+      to: Status.InProgress,
+      caller: Caller.Agent,
+      outcome: EventOutcome.Success,
+      error: null,
+    });
+  });
+
+  it("rolls the displacement back when the forced retry fails for a non-duplicate reason (MUST FIX)", async () => {
+    // Given the colliding pair, but the stale card is stored with a corrupt
+    // field (priority as a string) — so the FORCED retry's write succeeds yet
+    // its post-image fails schema validation, throwing a non-duplicate
+    // SchemaDrift error after the holder has already been displaced.
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 9,
+      status: Status.Done,
+      dedupeKey: "session:retry-rollback",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 10,
+      status: Status.InProgress,
+      dedupeKey: "session:retry-rollback",
+    });
+    // Corrupt the mover so the retry's returned image fails cardDocumentSchema.
+    const corruptStale = { ...staleDone, priority: "not-a-number" };
+    await cardsCollection(db).insertOne(corruptStale as never);
+    await cardsCollection(db).insertOne(liveOpen);
+
+    // When the agent force-revives it, the retry throws SchemaDrift (not a
+    // duplicate) — a plain non-transactional sequence would leave the holder
+    // stripped of its key with no move applied.
+    await expect(
+      updateTaskStatus(staleDone._id.toHexString(), Status.InProgress, {
+        caller: Caller.Agent,
+        force: true,
+      }),
+    ).rejects.toMatchObject({ code: ErrorCode.SchemaDrift });
+
+    // Then the transaction rolled back: the holder still owns its dedupeKey and
+    // the mover never left Done — the one-live-card invariant is intact.
+    const holderDoc = await cardsCollection(db).findOne({ _id: liveOpen._id });
+    expect(holderDoc?.dedupeKey).toBe("session:retry-rollback");
+    const moverDoc = await cardsCollection(db).findOne({ _id: staleDone._id });
+    expect(moverDoc?.status).toBe(Status.Done);
+  });
+
+  it("surfaces a duplicate and rolls back when the forced retry still collides (D15 cap)", async () => {
+    // Given a resolvable collision, but the in-transaction retry move is forced
+    // to hit a SECOND E11000 (a defensive branch the partial-unique index makes
+    // unreachable in practice — the 3rd findOneAndUpdate is the retry move).
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 11,
+      status: Status.Done,
+      dedupeKey: "session:retry-dup",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 12,
+      status: Status.InProgress,
+      dedupeKey: "session:retry-dup",
+    });
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    const original = Collection.prototype.findOneAndUpdate;
+    let calls = 0;
+    const spy = vi
+      .spyOn(Collection.prototype, "findOneAndUpdate")
+      .mockImplementation(function (
+        this: Collection<CardDocument>,
+        ...args: Parameters<typeof original>
+      ): ReturnType<typeof original> {
+        calls += 1;
+        // Calls: 1 = first move attempt (real E11000), 2 = displacement,
+        // 3 = the retry move — force it to collide a second time.
+        if (calls === 3) {
+          return Promise.reject(
+            Object.assign(new Error("E11000 duplicate key"), { code: 11000 }),
+          );
+        }
+        return original.apply(this, args);
+      });
+
+    try {
+      await expect(
+        updateTaskStatus(staleDone._id.toHexString(), Status.InProgress, {
+          caller: Caller.Agent,
+          force: true,
+        }),
+      ).rejects.toMatchObject({ code: ErrorCode.Duplicate });
+    } finally {
+      spy.mockRestore();
+    }
+
+    // The aborted transaction restores the displaced holder's dedupeKey.
+    const holderDoc = await cardsCollection(db).findOne({ _id: liveOpen._id });
+    expect(holderDoc?.dedupeKey).toBe("session:retry-dup");
   });
 });

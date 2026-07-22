@@ -36,7 +36,8 @@ import {
   findOneAndUpdateZ,
   findOneZ,
 } from "@/db/find-z";
-import { getDb } from "@/db/mongo";
+import { OPEN_STATUSES } from "@/db/indexes";
+import { getDb, withTransaction } from "@/db/mongo";
 import { getDefaultBlockInterval } from "@/settings/settings.service";
 
 /** Optional filter for {@link listTasks}. */
@@ -70,6 +71,12 @@ interface UpdateStatusOptions {
    * board default (see {@link updateTaskStatus}).
    */
   intervalMs?: number;
+  /**
+   * When a move collides on `dedupeKey` (reviving a stale card into a slot its
+   * session's open card already holds), displace the current open holder
+   * instead of throwing {@link ErrorCode.Duplicate} (D13).
+   */
+  force?: boolean;
 }
 
 /** True if the error is a MongoDB duplicate-key (E11000) error. */
@@ -314,6 +321,84 @@ async function insertSessionCard(
 }
 
 /**
+ * Inserts a session-less standalone card at a non-in_progress status (D12/D14):
+ * filing a card the caller isn't actively tracking, so it never carries a
+ * `sessionId` or `dedupeKey` and can't be adopted by a session's later
+ * create. Initialized idle (never picked up) by default; `done`/`blocked`
+ * placements additionally apply the same side effects `updateTaskStatus`
+ * applies on a move into that status (finishedAt / block countdown).
+ * @param db - The database handle.
+ * @param parsed - The validated create input.
+ * @param status - The non-in_progress status to file the card at.
+ * @returns The created card mapped to the client-facing shape.
+ */
+async function insertStandaloneCard(
+  db: Db,
+  parsed: ParsedCreateCardInput,
+  status: Status,
+): Promise<Card> {
+  const number = await nextNumber(db, "cards");
+  const now = new Date();
+  // Mirrors updateTaskStatus's to-Done side effect: a card filed already-done is
+  // stamped finished immediately, not left null awaiting a move.
+  const isDone = status === Status.Done;
+  // Mirrors updateTaskStatus's to-Blocked side effect: no create-time interval
+  // param exists, so a filed-blocked card always starts the board default's
+  // countdown (never the card's own — there's no prior stored one).
+  const isBlocked = status === Status.Blocked;
+  const blockInterval = isBlocked ? await getDefaultBlockInterval() : null;
+  // Non-null exactly when isBlocked, so this drives blockedUntil without a cast.
+  const blockedUntil =
+    blockInterval !== null ? new Date(now.getTime() + blockInterval) : null;
+
+  const doc: CardDocument = {
+    _id: new ObjectId(),
+    number,
+    title: parsed.title,
+    description: parsed.description,
+    status,
+    priority: 0,
+    origin: { type: OriginType.Manual },
+    // Session-less: always null, so this card is never adopted by a session's
+    // active-card lookup and never collides with the open-status dedupe index.
+    dedupeKey: null,
+    runState: RunState.Idle,
+    process: null,
+    attempts: 0,
+    restarts: 0,
+    nextStartAfter: null,
+    lastError: null,
+    createdAt: now,
+    updatedAt: now,
+    pickedAt: null,
+    finishedAt: isDone ? now : null,
+    blockedUntil,
+    blockInterval,
+    workspacePath: null,
+    repos: [],
+    tags: parsed.tags,
+    nextAction: parsed.nextAction,
+    progress: [],
+    decisions: [],
+  };
+
+  // ignoreUndefined so an omitted description/nextAction is absent, not BSON
+  // null — matches createTask/insertSessionCard (SchemaDrift otherwise).
+  await cardsCollection(db).insertOne(doc, { ignoreUndefined: true });
+
+  await emitCardEvent(db, {
+    cardId: doc._id,
+    from: null,
+    to: status,
+    caller: Caller.Agent,
+    outcome: EventOutcome.Success,
+    error: null,
+  });
+
+  return toClientCard(doc);
+}
+
+/**
  * Creates a session-tracked card that starts directly in the in_progress lane
  * (an active session is already working it, so it skips Todo). Idempotent per
  * session: a non-divergent call for a session that already has a non-terminal
@@ -322,12 +407,28 @@ async function insertSessionCard(
  * after a context compact) never fan out into many cards. An explicit
  * divergence (`forceNew`) opens a fresh, versioned card. Session-less callers
  * get today's plain create (no dedup possible without a handle).
+ *
+ * A `status` other than `in_progress` (D12/D14) skips all of the above: it
+ * files a session-less standalone card via {@link insertStandaloneCard}
+ * instead, before the adopt check even runs — so it can never touch or
+ * duplicate the calling session's live card.
  * @param input - Caller input; validated against {@link createCardInputSchema}.
  * @returns The created (or adopted) card mapped to the client-facing shape.
  */
 export async function createCard(input: CreateCardInput): Promise<Card> {
-  const parsed = createCardInputSchema.parse(input);
+  const result = createCardInputSchema.safeParse(input);
+  if (!result.success) {
+    throw new AppError(
+      ErrorCode.Validation,
+      `invalid card create: ${result.error.message}`,
+    );
+  }
+  const parsed = result.data;
   const db = await getDb();
+
+  if (parsed.status !== Status.InProgress) {
+    return insertStandaloneCard(db, parsed, parsed.status);
+  }
 
   if (parsed.sessionId && !parsed.forceNew) {
     const active = await findActiveSessionCard(db, parsed.sessionId);
@@ -458,14 +559,19 @@ export async function listCards(
 
 /**
  * Moves a card to `status` in one atomic update, enforcing the transition
- * policy per caller. The human UI may move a card any→any (the override); the
- * agent may move only along its legal lifecycle edges — enforced atomically by
- * filtering the update on the legal source statuses, so an illegal move simply
- * matches nothing. `pickedAt` is set on the first transition into `in_progress`
+ * policy per caller. Human UI and Agent may move a card any→any (full parity);
+ * other callers (Scheduler/System) may move only along their legal lifecycle
+ * edges — enforced atomically by filtering the update on the legal source
+ * statuses, so an illegal move simply matches nothing.
+ * `pickedAt` is set on the first transition into `in_progress`
  * (only when still null), `finishedAt` on a move into `done`, and `updatedAt`
  * always bumps. When the update matches nothing, a single follow-up read
  * disambiguates: a missing card throws {@link ErrorCode.NotFound}, an existing
- * card on an illegal source status throws {@link ErrorCode.InvalidTransition}.
+ * card on an illegal source status throws {@link ErrorCode.InvalidTransition}. A
+ * move that collides with an open card sharing its `dedupeKey` throws
+ * {@link ErrorCode.Duplicate}; `options.force` displaces that holder (clears its
+ * `dedupeKey`) and retries the move in a single transaction, so a retry failure
+ * rolls the displacement back rather than orphaning the holder.
  * `blockedUntil` is driven off the same atomic update: entering Blocked starts
  * a server-clock countdown of `options.intervalMs`; re-entering it ("Reset
  * timer") with no interval replays the card's own stored `blockInterval`,
@@ -509,43 +615,133 @@ export async function updateTaskStatus(
       (await getDefaultBlockInterval());
   }
 
-  // UI overrides any→any (bare `_id` filter); other callers are constrained to
-  // their legal source statuses via `$in`, so an illegal move matches nothing.
+  // UI overrides any→any (bare `_id` filter); other callers go through the
+  // `$in` legal-source-statuses filter — but the Agent's source set is now
+  // every status (D1's any→any policy), so in practice this is any→any too.
+  // Scheduler/System still have empty from-sets, so `$in` still guards them.
   const filter =
     caller === Caller.Ui
       ? { _id }
       : { _id, status: { $in: legalFromStatuses(caller, status) } };
 
-  const updated = await findOneAndUpdateZ(
-    cardsCollection(db),
-    filter,
-    [
-      {
-        $set: {
-          status,
-          updatedAt: "$$NOW",
-          pickedAt: isToInProgress
-            ? { $ifNull: ["$pickedAt", "$$NOW"] }
-            : "$pickedAt",
-          finishedAt: isToDone ? "$$NOW" : "$finishedAt",
-          // Into Blocked → start a server-clock countdown of `resolvedInterval`
-          // (also resets it on "Reset timer", which re-enters Blocked). Out of
-          // Blocked → clear it. Otherwise preserve the existing value. isToBlocked
-          // is checked first so a Blocked→Blocked reset wins over the clear branch.
-          blockedUntil: isToBlocked
-            ? { $add: ["$$NOW", resolvedInterval] }
-            : isFromBlocked
-              ? null
-              : "$blockedUntil",
-          // Remember the interval the card was blocked with (replayed by "Reset
-          // timer"); preserved untouched on every non-Blocked transition.
-          blockInterval: isToBlocked ? resolvedInterval : "$blockInterval",
-        },
+  const updatePipeline = [
+    {
+      $set: {
+        status,
+        updatedAt: "$$NOW",
+        pickedAt: isToInProgress
+          ? { $ifNull: ["$pickedAt", "$$NOW"] }
+          : "$pickedAt",
+        finishedAt: isToDone ? "$$NOW" : "$finishedAt",
+        // Into Blocked → start a server-clock countdown of `resolvedInterval`
+        // (also resets it on "Reset timer", which re-enters Blocked). Out of
+        // Blocked → clear it. Otherwise preserve the existing value. isToBlocked
+        // is checked first so a Blocked→Blocked reset wins over the clear branch.
+        blockedUntil: isToBlocked
+          ? { $add: ["$$NOW", resolvedInterval] }
+          : isFromBlocked
+            ? null
+            : "$blockedUntil",
+        // Remember the interval the card was blocked with (replayed by "Reset
+        // timer"); preserved untouched on every non-Blocked transition.
+        blockInterval: isToBlocked ? resolvedInterval : "$blockInterval",
       },
-    ],
-    cardDocumentSchema,
-    { returnDocument: "after" },
-  );
+    },
+  ];
+
+  let updated: CardDocument | null;
+  try {
+    updated = await findOneAndUpdateZ(
+      cardsCollection(db),
+      filter,
+      updatePipeline,
+      cardDocumentSchema,
+      { returnDocument: "after" },
+    );
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+
+    // One literal for both the rejected-collision and forced-retry-still-collides
+    // paths, so the two can't drift apart.
+    const duplicateMessage = `card ${id} can't move to "${status}" — another open card already holds its dedupeKey`;
+
+    if (!options.force) {
+      const duplicateError = new AppError(
+        ErrorCode.Duplicate,
+        duplicateMessage,
+      );
+      // D16/D19: audit the rejected attempt itself, mirroring the
+      // InvalidTransition failure branch below.
+      await emitCardEvent(db, {
+        cardId: _id,
+        from: preImage?.status ?? null,
+        to: status,
+        caller,
+        outcome: EventOutcome.Failure,
+        error: { code: duplicateError.code, message: duplicateError.message },
+      });
+      throw duplicateError;
+    }
+
+    // The E11000 proves the moving card's dedupeKey is a real string colliding
+    // with the open holder — require it explicitly so the displacement filter
+    // can never match an arbitrary `dedupeKey: null` card.
+    const holderKey = preImage?.dedupeKey;
+    if (typeof holderKey !== "string") {
+      throw new AppError(ErrorCode.Duplicate, duplicateMessage);
+    }
+
+    // force: displace the CURRENT open holder of this dedupeKey (not this card —
+    // it's mid-move) then retry the move, both in ONE transaction so a retry
+    // failure rolls the displacement back rather than stranding the holder with
+    // its dedupeKey cleared and no move applied. A second E11000 means the
+    // collision wasn't the one-holder case this override targets; surface it as
+    // a duplicate rather than looping.
+    updated = await withTransaction(async (session) => {
+      const displacedHolder = await cardsCollection(db).findOneAndUpdate(
+        {
+          dedupeKey: holderKey,
+          status: { $in: OPEN_STATUSES },
+          _id: { $ne: _id },
+        },
+        { $set: { dedupeKey: null } },
+        { session },
+      );
+
+      // D16/D19: audit the displacement on the holder itself — a same-status
+      // event (its status doesn't change) recording that its dedupeKey was
+      // cleared to make room for this move.
+      if (displacedHolder) {
+        await emitCardEvent(
+          db,
+          {
+            cardId: displacedHolder._id,
+            from: displacedHolder.status,
+            to: displacedHolder.status,
+            caller: Caller.Agent,
+            outcome: EventOutcome.Success,
+            error: null,
+          },
+          { session },
+        );
+      }
+
+      try {
+        return await findOneAndUpdateZ(
+          cardsCollection(db),
+          filter,
+          updatePipeline,
+          cardDocumentSchema,
+          { returnDocument: "after", session },
+        );
+      } catch (retryError) {
+        if (isDuplicateKeyError(retryError)) {
+          throw new AppError(ErrorCode.Duplicate, duplicateMessage);
+        }
+        throw retryError;
+      }
+    });
+  }
 
   if (!updated) {
     // The update matched nothing: disambiguate missing vs illegal transition

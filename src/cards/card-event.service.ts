@@ -1,4 +1,4 @@
-import { type Db, ObjectId } from "mongodb";
+import { type ClientSession, type Db, ObjectId } from "mongodb";
 import { cardEventDocumentSchema } from "@/cards/card.document.schema";
 import type { Status } from "@/cards/card.type";
 import {
@@ -45,10 +45,12 @@ interface FieldEditEventInput {
  * (create + transitions).
  * @param db - The database handle.
  * @param event - The status-transition fields to record.
+ * @param options - Optional `session` to enlist the insert in a transaction.
  */
 export async function emitCardEvent(
   db: Db,
   event: CardEventInput,
+  options?: { session?: ClientSession },
 ): Promise<void> {
   const doc: StatusTransitionEventDocument = {
     _id: new ObjectId(),
@@ -56,7 +58,7 @@ export async function emitCardEvent(
     kind: CardEventKind.StatusTransition,
     ...event,
   };
-  await cardEventsCollection(db).insertOne(doc);
+  await cardEventsCollection(db).insertOne(doc, options);
 }
 
 /**
