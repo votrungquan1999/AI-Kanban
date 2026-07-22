@@ -1,17 +1,19 @@
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { afterAll, beforeAll, beforeEach } from "vitest";
 import { closeMongo, getDb } from "@/db/mongo";
 
 /**
  * Boots an in-memory mongod for the current test file and points
  * `process.env.MONGODB_URI` at it; tears down and clears the connection cache
- * afterwards. Call once at the top of an integration `describe`.
+ * afterwards. Call once at the top of an integration `describe`. Runs as a
+ * single-node replica set (not a bare mongod) so code paths using Mongo
+ * transactions — which require a replica set — work under test.
  */
 export function useTestMongo(): void {
-  let server: MongoMemoryServer;
+  let server: MongoMemoryReplSet;
 
   beforeAll(async () => {
-    server = await MongoMemoryServer.create();
+    server = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     process.env.MONGODB_URI = server.getUri();
   });
 

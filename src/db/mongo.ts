@@ -1,4 +1,4 @@
-import { type Db, MongoClient } from "mongodb";
+import { type ClientSession, type Db, MongoClient } from "mongodb";
 
 interface MongoConnection {
   client: MongoClient;
@@ -51,6 +51,26 @@ function connect(): Promise<MongoConnection> {
   }
 
   return mongo.connecting;
+}
+
+/**
+ * Runs `fn` inside a Mongo transaction on the shared cached client, committing
+ * if it resolves and aborting (rolling back every write) if it throws — so a
+ * multi-write sequence lands whole or not at all. Requires a replica-set /
+ * mongos deployment (production Atlas and the test replica set both qualify).
+ * @param fn - The work to run; every write must pass the given `session`.
+ * @returns Whatever `fn` resolves to.
+ */
+export async function withTransaction<T>(
+  fn: (session: ClientSession) => Promise<T>,
+): Promise<T> {
+  const { client } = await connect();
+  const session = client.startSession();
+  try {
+    return await session.withTransaction(fn);
+  } finally {
+    await session.endSession();
+  }
 }
 
 /** Closes the connection and clears the cache (for tests and shutdown). */

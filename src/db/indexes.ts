@@ -7,8 +7,17 @@ import {
   recurringTasksCollection,
 } from "@/db/collections";
 
-/** Statuses considered "open" — a dedupeKey may only repeat once these clear. */
-const OPEN_STATUSES = [Status.Todo, Status.InProgress, Status.NeedReview];
+/**
+ * Statuses considered "open" — a dedupeKey may only repeat once these clear.
+ * Exported so {@link updateTaskStatus}'s force path (card.service.ts) can find
+ * the current open holder of a colliding dedupeKey — single source of truth
+ * with the partial-unique index below, no duplicated status trio to drift.
+ */
+export const OPEN_STATUSES = [
+  Status.Todo,
+  Status.InProgress,
+  Status.NeedReview,
+];
 
 /**
  * Creates the `cards` + `recurring_tasks` indexes idempotently (safe to run on
