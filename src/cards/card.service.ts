@@ -710,7 +710,8 @@ export async function updateTaskStatus(
 
       // D16/D19: audit the displacement on the holder itself — a same-status
       // event (its status doesn't change) recording that its dedupeKey was
-      // cleared to make room for this move.
+      // cleared to make room for this move. Attributed to the caller that
+      // forced the move, so the log answers who displaced it.
       if (displacedHolder) {
         await emitCardEvent(
           db,
@@ -718,7 +719,7 @@ export async function updateTaskStatus(
             cardId: displacedHolder._id,
             from: displacedHolder.status,
             to: displacedHolder.status,
-            caller: Caller.Agent,
+            caller,
             outcome: EventOutcome.Success,
             error: null,
           },

@@ -1393,6 +1393,42 @@ describe("updateTaskStatus dedupeKey collision", () => {
     });
   });
 
+  it("attributes the displacement event to the caller that forced it, not always the agent", async () => {
+    // Given the same colliding pair, but the force comes from the human UI
+    const db = await getDb();
+    await bootstrapIndexes(db);
+    const staleDone = makeCard({
+      number: 13,
+      status: Status.Done,
+      dedupeKey: "session:collide-force-ui",
+      finishedAt: new Date(),
+    });
+    const liveOpen = makeCard({
+      number: 14,
+      status: Status.InProgress,
+      dedupeKey: "session:collide-force-ui",
+    });
+    await cardsCollection(db).insertMany([staleDone, liveOpen]);
+
+    // When a person on the webview revives the stale card with force:true
+    await updateTaskStatus(staleDone._id.toHexString(), Status.InProgress, {
+      caller: Caller.Ui,
+      force: true,
+    });
+
+    // Then the holder's displacement is audited as a UI action — an audit log
+    // that always says "agent" can't answer who actually displaced the card.
+    const holderEvents = await listCardEvents(liveOpen._id.toHexString());
+    const displacementEvents = holderEvents.filter(
+      (event) => event.outcome === EventOutcome.Success,
+    );
+    expect(displacementEvents).toHaveLength(1);
+    expect(displacementEvents[0]).toMatchObject({
+      caller: Caller.Ui,
+      outcome: EventOutcome.Success,
+    });
+  });
+
   it("rolls the displacement back when the forced retry fails for a non-duplicate reason (MUST FIX)", async () => {
     // Given the colliding pair, but the stale card is stored with a corrupt
     // field (priority as a string) — so the FORCED retry's write succeeds yet
