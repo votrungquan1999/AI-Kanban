@@ -524,7 +524,7 @@ export async function listCards(
   const text = filter.text?.trim();
   const hasText = Boolean(text);
   if (text) {
-    query.$text = { $search: filter.text };
+    query.$text = { $search: text };
   }
 
   // Paired with `leanCardDocumentSchema` (card.document.schema.ts) — no

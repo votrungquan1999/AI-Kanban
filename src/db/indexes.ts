@@ -20,21 +20,22 @@ export const OPEN_STATUSES = [
 ];
 
 /**
- * Runs one `createIndex` call in isolation, logging and swallowing a failure
- * so it can't abort the rest of {@link bootstrapIndexes} — an unrelated
- * index (e.g. search) must not go missing because another failed to build.
- * @returns The caught error, or `undefined` on success.
+ * Runs one `createIndex` call in isolation, logging the failure and collecting
+ * it into `errors` rather than throwing — an unrelated index (e.g. search) must
+ * not go missing because another failed to build.
+ * @param errors - Accumulator the caught error is appended to.
+ * @param build - Performs the single `createIndex` call.
  */
 async function tryCreateIndex(
+  errors: Error[],
   build: () => Promise<unknown>,
-): Promise<Error | undefined> {
+): Promise<void> {
   try {
     await build();
-    return undefined;
   } catch (error) {
     const wrapped = error instanceof Error ? error : new Error(String(error));
     console.error("Index build failed:", wrapped);
-    return wrapped;
+    errors.push(wrapped);
   }
 }
 
@@ -53,77 +54,57 @@ async function tryCreateIndex(
  */
 export async function bootstrapIndexes(db: Db): Promise<Error[]> {
   const errors: Error[] = [];
-  const record = (error: Error | undefined) => {
-    if (error) errors.push(error);
-  };
-
   const cards = cardsCollection(db);
 
-  record(
-    await tryCreateIndex(() =>
-      cards.createIndex({ status: 1, priority: -1, createdAt: 1 }),
-    ),
+  await tryCreateIndex(errors, () =>
+    cards.createIndex({ status: 1, priority: -1, createdAt: 1 }),
   );
-  record(
-    await tryCreateIndex(() =>
-      cards.createIndex({ number: 1 }, { unique: true }),
-    ),
+  await tryCreateIndex(errors, () =>
+    cards.createIndex({ number: 1 }, { unique: true }),
   );
 
   // Keyword search over title + description: ranked, word-based via $text,
   // not substring. Mongo allows only one text index per collection, so both
   // fields go in this single call. Built before dedupeKey so search exists
   // even if the dedupeKey build below fails.
-  record(
-    await tryCreateIndex(() =>
-      cards.createIndex({ title: "text", description: "text" }),
-    ),
+  await tryCreateIndex(errors, () =>
+    cards.createIndex({ title: "text", description: "text" }),
   );
 
-  record(
-    await tryCreateIndex(() =>
-      cards.createIndex(
-        { dedupeKey: 1 },
-        {
-          unique: true,
-          // Only enforce uniqueness among OPEN cards that actually carry a string
-          // dedupeKey — manual cards (dedupeKey: null) must never collide.
-          partialFilterExpression: {
-            dedupeKey: { $type: "string" },
-            status: { $in: OPEN_STATUSES },
-          },
+  await tryCreateIndex(errors, () =>
+    cards.createIndex(
+      { dedupeKey: 1 },
+      {
+        unique: true,
+        // Only enforce uniqueness among OPEN cards that actually carry a string
+        // dedupeKey — manual cards (dedupeKey: null) must never collide.
+        partialFilterExpression: {
+          dedupeKey: { $type: "string" },
+          status: { $in: OPEN_STATUSES },
         },
-      ),
+      },
     ),
   );
 
   // Chronological read-back of a card's audit events.
-  record(
-    await tryCreateIndex(() =>
-      cardEventsCollection(db).createIndex({ cardId: 1, at: 1 }),
-    ),
+  await tryCreateIndex(errors, () =>
+    cardEventsCollection(db).createIndex({ cardId: 1, at: 1 }),
   );
 
   const recurringTasks = recurringTasksCollection(db);
 
   // Dueness/claim scan: enabled + idle + nextDueAt-reached (equality, equality,
   // range — the prefix order the due-list and claim filters query on).
-  record(
-    await tryCreateIndex(() =>
-      recurringTasks.createIndex({ enabled: 1, runState: 1, nextDueAt: 1 }),
-    ),
+  await tryCreateIndex(errors, () =>
+    recurringTasks.createIndex({ enabled: 1, runState: 1, nextDueAt: 1 }),
   );
-  record(
-    await tryCreateIndex(() =>
-      recurringTasks.createIndex({ number: 1 }, { unique: true }),
-    ),
+  await tryCreateIndex(errors, () =>
+    recurringTasks.createIndex({ number: 1 }, { unique: true }),
   );
 
   // Chronological read-back of a recurring task's run history.
-  record(
-    await tryCreateIndex(() =>
-      recurringRunsCollection(db).createIndex({ recurringId: 1, at: 1 }),
-    ),
+  await tryCreateIndex(errors, () =>
+    recurringRunsCollection(db).createIndex({ recurringId: 1, at: 1 }),
   );
 
   return errors;

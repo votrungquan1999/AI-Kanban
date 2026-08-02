@@ -110,9 +110,9 @@ export function createCreateCard(): (args: {
  * Builds the `list_cards` handler: surveys the board as a compact per-card
  * summary. `status` narrows to exactly those statuses (overrides the default
  * hide-done/archived); `tags` narrows to cards with any named tag; `text` is
- * a keyword match on title/description; each falls through to "not applied"
- * when empty/whitespace/omitted. `limit` caps the count (default ~50, capped
- * at 200 — see {@link listCards}).
+ * a keyword match on title/description, relevance-ranked best-first; each falls
+ * through to "not applied" when empty/whitespace/omitted. `limit` caps the
+ * count (default ~50, capped at 200 — see {@link listCards}).
  * @returns A handler returning the lean cards under a `cards` key.
  */
 export function createListCards(): (args: {

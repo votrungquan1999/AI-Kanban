@@ -83,7 +83,10 @@ function connect(): Promise<MongoConnection> {
         // Clear the slot on ANY rejection here — connect() failing, or the
         // fulfilled continuation throwing (e.g. an invalid MONGODB_DB) —
         // so the next call retries instead of replaying a wedged failure.
+        // Cache too: the continuation sets it before it can throw, and the
+        // client it points at is closed just below.
         mongo.connecting = undefined;
+        mongo.cache = undefined;
         await client.close().catch(() => {});
         throw error;
       });
