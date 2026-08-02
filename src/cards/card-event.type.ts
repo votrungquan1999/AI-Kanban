@@ -31,6 +31,8 @@ export enum EditableField {
   Tags = "tags",
   /** A decision recorded/marked outdated on the card's durable decision log. */
   Decision = "decision",
+  /** Ownership moved to another session — rewrites who is responsible for the card. */
+  SessionId = "sessionId",
 }
 
 /** Error detail captured on a failure event (for developer investigation). */

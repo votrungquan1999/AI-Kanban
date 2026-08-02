@@ -113,7 +113,10 @@ describe("bootstrapIndexes — one failing index doesn't cost the others", () =>
 
       const errors = await bootstrapIndexes(db);
       expect(errors).toHaveLength(1);
-      expect(errors[0]).toBeInstanceOf(Error);
+      // Named, so a caller can tell whether the failure concerns it — search
+      // must not be blamed for an unrelated index (D13)
+      expect(errors[0].index).toBe("cards.dedupeKey");
+      expect(errors[0].error).toBeInstanceOf(Error);
 
       const indexes = await db.collection("cards").indexes();
       expect(indexes.find((index) => index.key._fts === "text")).toBeDefined();

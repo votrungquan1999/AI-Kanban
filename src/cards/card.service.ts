@@ -36,7 +36,7 @@ import {
   findOneAndUpdateZ,
   findOneZ,
 } from "@/db/find-z";
-import { OPEN_STATUSES } from "@/db/indexes";
+import { OPEN_STATUSES, TEXT_INDEX } from "@/db/indexes";
 import { getDb, getIndexBootstrapErrors, withTransaction } from "@/db/mongo";
 import { getDefaultBlockInterval } from "@/settings/settings.service";
 
@@ -173,6 +173,9 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
  * @param version - 1 for the base card, >1 for a diverged card.
  * @returns The dedupeKey string.
  */
+/** Prefix marking a dedupeKey as session-owned rather than externally produced. */
+export const SESSION_KEY_PREFIX = "session:";
+
 export function sessionDedupeKey(sessionId: string, version: number): string {
   return version <= 1
     ? `session:${sessionId}`
@@ -504,16 +507,20 @@ function isMissingTextIndex(error: unknown): boolean {
 }
 
 /**
- * What the last index bootstrap recorded, as a suffix for the search-unavailable
- * error — usually the reason the text index is missing (a failed build logs here
- * and nowhere the caller can reach). Empty when bootstrap left nothing behind,
- * which includes the case where it never ran in this process.
+ * Why the text index is missing, when the last bootstrap recorded a reason —
+ * a failed build logs there and nowhere the caller can reach. Narrowed to the
+ * TEXT index only (D13): any other index failing has nothing to do with search,
+ * so reporting it would name a wrong cause and would paste that index's key
+ * values (e.g. a colliding `dedupeKey`, which embeds a session id) into an
+ * agent-visible message.
  * @returns A leading-separator detail string, or `""`.
  */
 function bootstrapDetail(): string {
-  const errors = getIndexBootstrapErrors();
-  if (errors.length === 0) return "";
-  return `. Index bootstrap reported: ${errors.map((error) => error.message).join("; ")}`;
+  const textFailures = getIndexBootstrapErrors().filter(
+    (failure) => failure.index === TEXT_INDEX,
+  );
+  if (textFailures.length === 0) return "";
+  return `. Index bootstrap reported: ${textFailures.map((failure) => failure.error.message).join("; ")}`;
 }
 
 /**

@@ -440,7 +440,7 @@ describe("list_cards handler when the board's search index is missing", () => {
     }
   });
 
-  it("carries what the index bootstrap recorded, so the operator learns why search is missing", async () => {
+  it("never blames an unrelated index failure, nor leaks its key values, for missing search", async () => {
     // Given a board that already holds duplicate open cards under one dedupe
     // key — the production shape that makes the partial-unique index unbuildable
     const db = await getDb();
@@ -466,11 +466,14 @@ describe("list_cards handler when the board's search index is missing", () => {
       // When the agent searches by keyword
       const result = await createListCards()({ text: "holder" });
 
-      // Then the error names the index that could not be built, rather than
-      // leaving the operator to guess why search vanished
+      // Then the message does NOT pin the blame on dedupeKey, which has
+      // nothing to do with search — a wrong cause sends the operator after the
+      // wrong problem — and does not paste the colliding key's session id into
+      // the agent's context along the way
       expect(result.isError).toBe(true);
       const { message } = result.structuredContent as { message: string };
-      expect(message).toContain("dedupeKey");
+      expect(message).not.toContain("dedupeKey");
+      expect(message).not.toContain("session-collides");
     } finally {
       await closeMongo();
       const clean = await getDb();

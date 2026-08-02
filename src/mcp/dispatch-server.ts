@@ -153,7 +153,7 @@ export function registerDispatchTools(server: McpServer): void {
     "adopt_card",
     {
       description:
-        "Take over an existing card as this session's card, by id. Use it after finding a card for work you are resuming (e.g. via list_cards text search) so the board recognises the hand-over: it re-stamps the card's session ownership, which is what makes a later create_card from this session reclaim THIS card instead of opening a duplicate. Does not change the card's status — move it yourself with set_status if it is parked or finished. Returns ERR_DUPLICATE when this session already has an open card; resolve that one first rather than adopting a second.",
+        "Take over an existing card as this session's card, by id. Use it after finding a card for work you are resuming (e.g. via list_cards text search) so the board recognises the hand-over: it re-stamps the card's session ownership, which is what makes a later create_card from this session reclaim THIS card instead of opening a duplicate. Does not change the card's status — move it yourself with set_status if it is parked or finished. Refused with ERR_DUPLICATE when this session already holds an open card (resolve that one first) or when another session adopted this card first; refused with ERR_VALIDATION for a todo card (claim it with claim_card instead) or one carrying a non-session dedupeKey that adopting would destroy.",
       inputSchema: { id: cardIdSchema, sessionId: z.string().min(1) },
     },
     createAdoptCard(),

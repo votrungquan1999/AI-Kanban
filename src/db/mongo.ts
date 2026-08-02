@@ -1,5 +1,5 @@
 import { type ClientSession, type Db, MongoClient } from "mongodb";
-import { bootstrapIndexes } from "@/db/indexes";
+import { bootstrapIndexes, type IndexBuildFailure } from "@/db/indexes";
 
 interface MongoConnection {
   client: MongoClient;
@@ -9,7 +9,7 @@ interface MongoConnection {
 interface MongoCacheSlot {
   cache?: MongoConnection;
   connecting?: Promise<MongoConnection>;
-  bootstrapErrors?: Error[];
+  bootstrapErrors?: IndexBuildFailure[];
 }
 
 declare global {
@@ -38,14 +38,34 @@ export async function getDb(): Promise<Db> {
 }
 
 /**
- * Returns every error from the most recent index-bootstrap attempt — more
- * than one can fail since each index is isolated. Empty both when nothing
- * has failed and when bootstrap hasn't run yet; callers can't tell those
- * apart today.
- * @returns The caught errors, or `[]`.
+ * Returns every failure from the most recent index-bootstrap attempt run by
+ * {@link connect} — more than one can fail since each index is isolated, and
+ * each carries the index name so a caller can tell whether it concerns them.
+ *
+ * Only `connect()` records here: calling `bootstrapIndexes` directly returns
+ * its failures to that caller and leaves this untouched. Empty both when
+ * nothing failed and when no connect-time bootstrap has run in this process.
+ * @returns The caught failures, or `[]`.
  */
-export function getIndexBootstrapErrors(): Error[] {
+export function getIndexBootstrapErrors(): IndexBuildFailure[] {
   return slot().bootstrapErrors ?? [];
+}
+
+/**
+ * Records a bootstrap outcome, but only while `connection` is still the live
+ * one — a bootstrap that finishes after `closeMongo()` must not repopulate the
+ * slot that teardown just cleared, or the errors outlive the connection.
+ * @param mongo - The shared cache slot.
+ * @param connection - The connection the bootstrap ran against.
+ * @param errors - What the bootstrap caught (empty when all indexes built).
+ */
+function recordBootstrapErrors(
+  mongo: MongoCacheSlot,
+  connection: MongoConnection,
+  errors: IndexBuildFailure[],
+): void {
+  if (mongo.cache !== connection) return;
+  mongo.bootstrapErrors = errors;
 }
 
 function connect(): Promise<MongoConnection> {
@@ -60,24 +80,35 @@ function connect(): Promise<MongoConnection> {
     mongo.connecting = client
       .connect()
       .then(async (connected) => {
-        // Cache is set before the bootstrap await so calls arriving after
-        // this point skip it; callers already awaiting `connecting` still wait.
-        mongo.cache = { client, db: connected.db(process.env.MONGODB_DB) };
+        // Held locally as well as cached: the slot can be cleared during the
+        // bootstrap await (closeMongo), and this caller was promised THIS
+        // connection — reading the slot back would hand it `undefined`.
+        const connection = { client, db: connected.db(process.env.MONGODB_DB) };
+        // Cached before the bootstrap await so calls arriving after this point
+        // skip it; callers already awaiting `connecting` still wait.
+        mongo.cache = connection;
         try {
           // bootstrapIndexes isolates and logs each createIndex failure
           // itself and resolves with whatever it caught — record that for a
           // caller to read back, rather than relying on a throw here.
-          mongo.bootstrapErrors = await bootstrapIndexes(mongo.cache.db);
+          recordBootstrapErrors(
+            mongo,
+            connection,
+            await bootstrapIndexes(connection.db),
+          );
         } catch (error) {
           // Fail-open backstop: bootstrapIndexes should never throw given its
           // own per-index isolation, but a bootstrap failure must never take
           // the board down even if something escapes that isolation.
           console.error("Index bootstrap failed unexpectedly:", error);
-          mongo.bootstrapErrors = [
-            error instanceof Error ? error : new Error(String(error)),
-          ];
+          recordBootstrapErrors(mongo, connection, [
+            {
+              index: "bootstrap",
+              error: error instanceof Error ? error : new Error(String(error)),
+            },
+          ]);
         }
-        return mongo.cache;
+        return connection;
       })
       .catch(async (error) => {
         // Clear the slot on ANY rejection here — connect() failing, or the

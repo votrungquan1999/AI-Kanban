@@ -92,6 +92,31 @@ describe("getDb — survives a bootstrap failure", () => {
     // And the failure is recorded somewhere a caller can read it back
     const errors = getIndexBootstrapErrors();
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toBeInstanceOf(Error);
+    expect(errors[0].index).toBe("cards.dedupeKey");
+    expect(errors[0].error).toBeInstanceOf(Error);
+  });
+});
+
+describe("getDb racing a shutdown", () => {
+  useTestMongo();
+
+  it("hands the in-flight caller a real handle and leaves no stale bootstrap errors", async () => {
+    // Given a connect in flight, past the point where it caches the handle but
+    // still inside index bootstrap
+    const pending = getDb();
+    while (!globalThis.__mongo?.cache) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    // When the connection is torn down underneath it
+    await closeMongo();
+
+    // Then the caller still gets a usable handle rather than undefined — the
+    // slot it read is gone, but the connection it was promised is not
+    const db = await pending;
+    expect(typeof db?.collection).toBe("function");
+
+    // And the teardown's cleared error slot is not repopulated behind it
+    expect(getIndexBootstrapErrors()).toEqual([]);
   });
 });
