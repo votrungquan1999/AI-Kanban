@@ -1,15 +1,16 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { createTask, updateTaskStatus } from "@/cards/card.service";
+import { createCard, createTask, updateTaskStatus } from "@/cards/card.service";
 import type { CardDocument } from "@/cards/card.type";
 import { OriginType, RunState, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
+import { nextNumber } from "@/cards/counters";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { bootstrapIndexes } from "@/db/indexes";
-import { getDb } from "@/db/mongo";
+import { closeMongo, getDb } from "@/db/mongo";
 import {
   createAppendDecision,
   createClaimCard,
@@ -25,6 +26,12 @@ import { useTestMongo } from "@/test/use-test-mongo";
 
 /** Mongo's generated name for the title+description text index. */
 const TEXT_INDEX_NAME = "title_text_description_text";
+
+/** Mongo's generated name for the partial-unique dedupeKey index. */
+const DEDUPE_INDEX_NAME = "dedupeKey_1";
+
+/** The dedupeKey the seeded colliding pair both carry. */
+const DUPLICATED_KEY = "session:session-collides";
 
 describe("claim_card handler", () => {
   useTestMongo();
@@ -430,6 +437,45 @@ describe("list_cards handler when the board's search index is missing", () => {
       });
     } finally {
       await bootstrapIndexes(db);
+    }
+  });
+
+  it("carries what the index bootstrap recorded, so the operator learns why search is missing", async () => {
+    // Given a board that already holds duplicate open cards under one dedupe
+    // key — the production shape that makes the partial-unique index unbuildable
+    const db = await getDb();
+    await cardsCollection(db).dropIndex(DEDUPE_INDEX_NAME);
+    await createCard({
+      title: "first holder",
+      tags: [],
+      sessionId: "session-collides",
+    });
+    await cardsCollection(db).insertOne({
+      ...(await cardsCollection(db).findOne({ dedupeKey: DUPLICATED_KEY })),
+      _id: new ObjectId(),
+      number: await nextNumber(db, "cards"),
+    } as CardDocument);
+
+    // And a fresh connection, so the bootstrap runs against that data and
+    // records the failure the way it would on a real cold start
+    await closeMongo();
+    const reconnected = await getDb();
+    await cardsCollection(reconnected).dropIndex(TEXT_INDEX_NAME);
+
+    try {
+      // When the agent searches by keyword
+      const result = await createListCards()({ text: "holder" });
+
+      // Then the error names the index that could not be built, rather than
+      // leaving the operator to guess why search vanished
+      expect(result.isError).toBe(true);
+      const { message } = result.structuredContent as { message: string };
+      expect(message).toContain("dedupeKey");
+    } finally {
+      await closeMongo();
+      const clean = await getDb();
+      await cardsCollection(clean).deleteMany({});
+      await bootstrapIndexes(clean);
     }
   });
 

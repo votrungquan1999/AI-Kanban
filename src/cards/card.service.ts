@@ -37,7 +37,7 @@ import {
   findOneZ,
 } from "@/db/find-z";
 import { OPEN_STATUSES } from "@/db/indexes";
-import { getDb, withTransaction } from "@/db/mongo";
+import { getDb, getIndexBootstrapErrors, withTransaction } from "@/db/mongo";
 import { getDefaultBlockInterval } from "@/settings/settings.service";
 
 /** Optional filter for {@link listTasks}. */
@@ -504,6 +504,19 @@ function isMissingTextIndex(error: unknown): boolean {
 }
 
 /**
+ * What the last index bootstrap recorded, as a suffix for the search-unavailable
+ * error — usually the reason the text index is missing (a failed build logs here
+ * and nowhere the caller can reach). Empty when bootstrap left nothing behind,
+ * which includes the case where it never ran in this process.
+ * @returns A leading-separator detail string, or `""`.
+ */
+function bootstrapDetail(): string {
+  const errors = getIndexBootstrapErrors();
+  if (errors.length === 0) return "";
+  return `. Index bootstrap reported: ${errors.map((error) => error.message).join("; ")}`;
+}
+
+/**
  * Surveys the board as a compact per-card summary (id, number, title, status,
  * nextAction, description truncated to 200 code points) via
  * {@link findManyProjectedZ}. Runs the same status reconcile as the web
@@ -597,7 +610,7 @@ export async function listCards(
     if (isMissingTextIndex(error)) {
       throw new AppError(
         ErrorCode.SearchUnavailable,
-        "keyword search is unavailable — the board's search index is not built; retry without `text`",
+        `keyword search is unavailable — the board's search index is not built; retry without \`text\`${bootstrapDetail()}`,
       );
     }
     throw error;
