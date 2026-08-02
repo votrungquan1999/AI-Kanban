@@ -1,3 +1,4 @@
+import { MongoClient } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { bootstrapIndexes } from "@/db/indexes";
 import { getDb } from "@/db/mongo";
@@ -70,5 +71,63 @@ describe("bootstrapIndexes", () => {
       (index) => index.key.recurringId === 1 && index.key.at === 1,
     );
     expect(byRun).toBeDefined();
+  });
+});
+
+// Own describe + own useTestMongo(): the suite above never clears collections,
+// so by this point the real unique dedupeKey index already exists there and a
+// duplicate seed would fail at insert time, not at createIndex time — a fresh
+// replica set is required for the seed to reach bootstrapIndexes at all.
+describe("bootstrapIndexes — one failing index doesn't cost the others", () => {
+  useTestMongo();
+
+  it("still creates the text index when the dedupeKey index fails to build", async () => {
+    // Seed via a raw client, not getDb(): getDb() itself now drives
+    // connect()'s auto-bootstrap (Behavior 3/4), which would build the unique
+    // dedupeKey index before this insert ever runs, turning the intended
+    // createIndex-time E11000 into an insert-time one instead.
+    const client = new MongoClient(process.env.MONGODB_URI as string);
+    try {
+      await client.connect();
+      const db = client.db();
+      await db.collection("cards").insertMany([
+        {
+          number: 1,
+          title: "a",
+          status: "todo",
+          priority: 0,
+          dedupeKey: "dup",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          number: 2,
+          title: "b",
+          status: "todo",
+          priority: 0,
+          dedupeKey: "dup",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]);
+
+      const errors = await bootstrapIndexes(db);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toBeInstanceOf(Error);
+
+      const indexes = await db.collection("cards").indexes();
+      expect(indexes.find((index) => index.key._fts === "text")).toBeDefined();
+
+      // Also prove a survivor called AFTER the failing dedupeKey index, not
+      // just one before it — isolation must not stop at the failure point.
+      const eventIndexes = await db.collection("card_events").indexes();
+      expect(
+        eventIndexes.find(
+          (index) => index.key.cardId === 1 && index.key.at === 1,
+        ),
+      ).toBeDefined();
+    } finally {
+      await client.close();
+    }
   });
 });

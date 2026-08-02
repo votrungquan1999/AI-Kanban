@@ -1,4 +1,5 @@
 import { type ClientSession, type Db, MongoClient } from "mongodb";
+import { bootstrapIndexes } from "@/db/indexes";
 
 interface MongoConnection {
   client: MongoClient;
@@ -8,6 +9,7 @@ interface MongoConnection {
 interface MongoCacheSlot {
   cache?: MongoConnection;
   connecting?: Promise<MongoConnection>;
+  bootstrapErrors?: Error[];
 }
 
 declare global {
@@ -35,6 +37,17 @@ export async function getDb(): Promise<Db> {
   return connection.db;
 }
 
+/**
+ * Returns every error from the most recent index-bootstrap attempt — more
+ * than one can fail since each index is isolated. Empty both when nothing
+ * has failed and when bootstrap hasn't run yet; callers can't tell those
+ * apart today.
+ * @returns The caught errors, or `[]`.
+ */
+export function getIndexBootstrapErrors(): Error[] {
+  return slot().bootstrapErrors ?? [];
+}
+
 function connect(): Promise<MongoConnection> {
   const mongo = slot();
   if (mongo.cache) return Promise.resolve(mongo.cache);
@@ -44,10 +57,36 @@ function connect(): Promise<MongoConnection> {
     if (!uri) throw new Error("MONGODB_URI is not set");
 
     const client = new MongoClient(uri);
-    mongo.connecting = client.connect().then((connected) => {
-      mongo.cache = { client, db: connected.db(process.env.MONGODB_DB) };
-      return mongo.cache;
-    });
+    mongo.connecting = client
+      .connect()
+      .then(async (connected) => {
+        // Cache is set before the bootstrap await so calls arriving after
+        // this point skip it; callers already awaiting `connecting` still wait.
+        mongo.cache = { client, db: connected.db(process.env.MONGODB_DB) };
+        try {
+          // bootstrapIndexes isolates and logs each createIndex failure
+          // itself and resolves with whatever it caught — record that for a
+          // caller to read back, rather than relying on a throw here.
+          mongo.bootstrapErrors = await bootstrapIndexes(mongo.cache.db);
+        } catch (error) {
+          // Fail-open backstop: bootstrapIndexes should never throw given its
+          // own per-index isolation, but a bootstrap failure must never take
+          // the board down even if something escapes that isolation.
+          console.error("Index bootstrap failed unexpectedly:", error);
+          mongo.bootstrapErrors = [
+            error instanceof Error ? error : new Error(String(error)),
+          ];
+        }
+        return mongo.cache;
+      })
+      .catch(async (error) => {
+        // Clear the slot on ANY rejection here — connect() failing, or the
+        // fulfilled continuation throwing (e.g. an invalid MONGODB_DB) —
+        // so the next call retries instead of replaying a wedged failure.
+        mongo.connecting = undefined;
+        await client.close().catch(() => {});
+        throw error;
+      });
   }
 
   return mongo.connecting;
@@ -81,4 +120,5 @@ export async function closeMongo(): Promise<void> {
     mongo.cache = undefined;
   }
   mongo.connecting = undefined;
+  mongo.bootstrapErrors = undefined;
 }

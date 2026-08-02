@@ -517,11 +517,13 @@ export async function listCards(
     query.tags = { $in: filter.tags };
   }
 
-  // Keyword search over title+description (D3, needs the text index from
-  // bootstrapIndexes); blank/whitespace text is not applied (D9). No
-  // `$meta: "textScore"` sort — the `updatedAt` sort below stays the sole
-  // ordering.
-  if (filter.text && filter.text.trim().length > 0) {
+  // Keyword search over title+description (needs the text index from
+  // bootstrapIndexes); blank/whitespace text is not applied (D9). `hasText`
+  // is reused below to pick the sort — a text query ranks by relevance,
+  // everything else stays newest-first.
+  const text = filter.text?.trim();
+  const hasText = Boolean(text);
+  if (text) {
     query.$text = { $search: filter.text };
   }
 
@@ -544,14 +546,21 @@ export async function listCards(
     MAX_LIST_CARDS_LIMIT,
   );
 
-  // `updatedAt` is deliberately not in the lean projection above — Mongo
-  // sorts before projecting, so sorting on a non-projected field is fine.
+  // Neither `updatedAt` nor `score` is in the lean projection above — Mongo
+  // sorts/scores before projecting, so a non-projected sort field is fine.
+  // A text query ranks by relevance (best match first); otherwise newest
+  // first.
   const docs = await findManyProjectedZ(
     cardsCollection(db),
     query,
     projection,
     leanCardDocumentSchema,
-    { sort: { updatedAt: -1 }, limit },
+    {
+      sort: hasText
+        ? { score: { $meta: "textScore" }, updatedAt: -1 }
+        : { updatedAt: -1 },
+      limit,
+    },
   );
 
   return docs.map(toLeanCard);
