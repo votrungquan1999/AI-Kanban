@@ -15,12 +15,16 @@ import {
   createClaimCard,
   createCreateCard,
   createGetCardContext,
+  createListCards,
   createMarkDecisionOutdated,
   createSetStatus,
   createSetWorkspace,
   createUpdateCard,
 } from "@/mcp/dispatch-tools";
 import { useTestMongo } from "@/test/use-test-mongo";
+
+/** Mongo's generated name for the title+description text index. */
+const TEXT_INDEX_NAME = "title_text_description_text";
 
 describe("claim_card handler", () => {
   useTestMongo();
@@ -399,5 +403,58 @@ describe("update_card handler", () => {
     expect(result.structuredContent).toMatchObject({
       code: ErrorCode.NotFound,
     });
+  });
+});
+
+describe("list_cards handler when the board's search index is missing", () => {
+  useTestMongo();
+
+  it("returns a readable error for a keyword search instead of an empty board", async () => {
+    // Given a board carrying a matching card, whose text index failed to build
+    const db = await getDb();
+    await createTask({
+      title: "searchable card",
+      origin: { type: OriginType.Manual },
+    });
+    await cardsCollection(db).dropIndex(TEXT_INDEX_NAME);
+
+    try {
+      // When the agent searches by keyword
+      const result = await createListCards()({ text: "searchable" });
+
+      // Then it is told search is unavailable, not handed an empty result it
+      // would read as "no such card exists" and duplicate
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        code: ErrorCode.SearchUnavailable,
+      });
+    } finally {
+      await bootstrapIndexes(db);
+    }
+  });
+
+  it("still lists the board when the same call drops the keyword, so the agent can fall back", async () => {
+    // Given a board whose text index failed to build
+    const db = await getDb();
+    const created = await createTask({
+      title: "still listable",
+      origin: { type: OriginType.Manual },
+    });
+    await cardsCollection(db).dropIndex(TEXT_INDEX_NAME);
+
+    try {
+      // When the agent retries without the keyword, as the error told it to
+      const result = await createListCards()({});
+
+      // Then the board comes back intact — losing search never costs listing
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toMatchObject({
+        cards: expect.arrayContaining([
+          expect.objectContaining({ id: created.id, title: "still listable" }),
+        ]),
+      });
+    } finally {
+      await bootstrapIndexes(db);
+    }
   });
 });

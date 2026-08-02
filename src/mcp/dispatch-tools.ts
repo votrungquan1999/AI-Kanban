@@ -113,6 +113,10 @@ export function createCreateCard(): (args: {
  * a keyword match on title/description, relevance-ranked best-first; each falls
  * through to "not applied" when empty/whitespace/omitted. `limit` caps the
  * count (default ~50, capped at 200 — see {@link listCards}).
+ *
+ * A keyword search issued while the board's search index is missing returns a
+ * readable `ERR_SEARCH_UNAVAILABLE` result — the agent must be able to tell
+ * that apart from "no card matched", or it opens a duplicate.
  * @returns A handler returning the lean cards under a `cards` key.
  */
 export function createListCards(): (args: {
@@ -122,7 +126,14 @@ export function createListCards(): (args: {
   text?: string;
 }) => Promise<CallToolResult> {
   return async ({ status, tags, limit, text }) => {
-    return toCardListResult(await listCards({ status, tags, limit, text }));
+    try {
+      return toCardListResult(await listCards({ status, tags, limit, text }));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
   };
 }
 

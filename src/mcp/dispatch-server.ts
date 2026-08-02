@@ -65,7 +65,7 @@ export function registerDispatchTools(server: McpServer): void {
     "list_cards",
     {
       description:
-        "Survey the board as a compact per-card summary (id, number, title, status, nextAction, description truncated to 200 chars). By default hides done/archived cards; pass status to narrow to exactly those statuses (overrides the default). Pass tags to narrow to cards carrying any of the named tags. Pass text to search title/description by keyword (word-based match) — results are relevance-ranked, best match first, so the top results can be trusted when checking for an existing card. Pass limit to cap the result count (default 50, hard-capped at 200).",
+        "Survey the board as a compact per-card summary (id, number, title, status, nextAction, description truncated to 200 chars). By default hides done/archived cards; pass status to narrow to exactly those statuses (overrides the default). Pass tags to narrow to cards carrying any of the named tags. Pass text to search title/description by keyword (word-based match) — results are relevance-ranked, best match first, so the top results can be trusted when checking for an existing card. If a keyword search comes back ERR_SEARCH_UNAVAILABLE the board's search index is missing — treat that as 'unknown', never as 'no such card'; retry without text and scan the listing. Pass limit to cap the result count (default 50, hard-capped at 200).",
       inputSchema: {
         status: z.array(statusSchema).optional(),
         tags: z.array(z.string()).optional(),

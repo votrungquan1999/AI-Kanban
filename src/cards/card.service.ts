@@ -485,6 +485,24 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
   return docs.map(toClientCard);
 }
 
+/** Mongo's `IndexNotFound`, raised by a `$text` query with no text index. */
+const INDEX_NOT_FOUND_CODE = 27;
+
+/**
+ * Recognises the driver error a `$text` query raises when the text index is
+ * absent — matched on the numeric server code, not the message text.
+ * @param error - The value thrown by the find.
+ * @returns True when the failure was a missing text index.
+ */
+function isMissingTextIndex(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === INDEX_NOT_FOUND_CODE
+  );
+}
+
 /**
  * Surveys the board as a compact per-card summary (id, number, title, status,
  * nextAction, description truncated to 200 code points) via
@@ -494,6 +512,8 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
  * querying, so an agent survey matches what a human sees on the board (D6).
  * @param filter - Optional status/tags/text filters and result limit.
  * @returns Lean cards mapped to the client-facing shape.
+ * @throws {AppError} {@link ErrorCode.SearchUnavailable} when `text` was given
+ * but the text index is missing; an unfiltered listing still works.
  */
 export async function listCards(
   filter: ListCardsFilter = {},
@@ -550,20 +570,33 @@ export async function listCards(
   // sorts/scores before projecting, so a non-projected sort field is fine.
   // A text query ranks by relevance (best match first); otherwise newest
   // first.
-  const docs = await findManyProjectedZ(
-    cardsCollection(db),
-    query,
-    projection,
-    leanCardDocumentSchema,
-    {
-      sort: hasText
-        ? { score: { $meta: "textScore" }, updatedAt: -1 }
-        : { updatedAt: -1 },
-      limit,
-    },
-  );
+  try {
+    const docs = await findManyProjectedZ(
+      cardsCollection(db),
+      query,
+      projection,
+      leanCardDocumentSchema,
+      {
+        sort: hasText
+          ? { score: { $meta: "textScore" }, updatedAt: -1 }
+          : { updatedAt: -1 },
+        limit,
+      },
+    );
 
-  return docs.map(toLeanCard);
+    return docs.map(toLeanCard);
+  } catch (error) {
+    // A $text query with no text index is the one failure a caller can act on
+    // — an unsearched listing still works, so name it rather than letting an
+    // opaque driver error escape as if the board were empty.
+    if (isMissingTextIndex(error)) {
+      throw new AppError(
+        ErrorCode.SearchUnavailable,
+        "keyword search is unavailable — the board's search index is not built; retry without `text`",
+      );
+    }
+    throw error;
+  }
 }
 
 /**

@@ -9,6 +9,8 @@ export enum ErrorCode {
   AlreadyRunning = "ERR_ALREADY_RUNNING",
   /** A recurring task could not be claimed because it is disabled or not yet due. */
   NotDue = "ERR_NOT_DUE",
+  /** A keyword search ran without its text index — retrying without `text` still works. */
+  SearchUnavailable = "ERR_SEARCH_UNAVAILABLE",
 }
 
 /** A domain error carrying a stable {@link ErrorCode}. */
