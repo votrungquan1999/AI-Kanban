@@ -12,6 +12,7 @@ import {
 } from "@/cards/card.schema";
 import { workspaceDeclarationSchema } from "@/cards/card.workspace.service";
 import {
+  createAdoptCard,
   createAppendDecision,
   createAppendProgress,
   createClaimCard,
@@ -31,10 +32,10 @@ import {
 import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
- * Registers the generic dispatch tools — the ten card tools (`claim_card`,
+ * Registers the generic dispatch tools — the eleven card tools (`claim_card`,
  * `create_card`, `list_cards`, `append_progress`, `append_decision`,
- * `mark_decision_outdated`, `get_card_context`, `set_status`, `set_workspace`,
- * `update_card`) plus the five recurring queue tools (`list_recurring_due`,
+ * `mark_decision_outdated`, `get_card_context`, `set_status`, `adopt_card`,
+ * `set_workspace`, `update_card`) plus the five recurring queue tools (`list_recurring_due`,
  * `list_recurring_runs`, `start_recurring`, `complete_recurring`,
  * `fail_recurring`) — onto an MCP server. Shared by both the stdio factory
  * ({@link createDispatchMcpServer}) and the HTTP route's adapter initializer,
@@ -146,6 +147,16 @@ export function registerDispatchTools(server: McpServer): void {
       },
     },
     createSetStatus(),
+  );
+
+  server.registerTool(
+    "adopt_card",
+    {
+      description:
+        "Take over an existing card as this session's card, by id. Use it after finding a card for work you are resuming (e.g. via list_cards text search) so the board recognises the hand-over: it re-stamps the card's session ownership, which is what makes a later create_card from this session reclaim THIS card instead of opening a duplicate. Does not change the card's status — move it yourself with set_status if it is parked or finished. Returns ERR_DUPLICATE when this session already has an open card; resolve that one first rather than adopting a second.",
+      inputSchema: { id: cardIdSchema, sessionId: z.string().min(1) },
+    },
+    createAdoptCard(),
   );
 
   server.registerTool(

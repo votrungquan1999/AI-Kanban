@@ -80,7 +80,7 @@ interface UpdateStatusOptions {
 }
 
 /** True if the error is a MongoDB duplicate-key (E11000) error. */
-function isDuplicateKeyError(error: unknown): boolean {
+export function isDuplicateKeyError(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -173,7 +173,7 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
  * @param version - 1 for the base card, >1 for a diverged card.
  * @returns The dedupeKey string.
  */
-function sessionDedupeKey(sessionId: string, version: number): string {
+export function sessionDedupeKey(sessionId: string, version: number): string {
   return version <= 1
     ? `session:${sessionId}`
     : `session:${sessionId}:${version}`;

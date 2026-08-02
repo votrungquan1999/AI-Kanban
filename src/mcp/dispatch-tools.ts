@@ -1,4 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { adoptCard } from "@/cards/card.adopt.service";
 import { claimCard } from "@/cards/card.claim.service";
 import {
   appendDecision,
@@ -278,6 +279,31 @@ export function createSetStatus(): (args: {
         force,
       });
       return toCardResult(card);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `adopt_card` handler: hands an existing card to the session now
+ * working it, so the server's own idempotency recognises the adoption and a
+ * later `create_card` from that session reclaims this card instead of opening
+ * a second one. A card the session cannot take over (it already holds an open
+ * card) comes back as a readable `ERR_DUPLICATE` result rather than a silently
+ * dropped re-stamp.
+ * @returns A handler that transfers the card to the calling session.
+ */
+export function createAdoptCard(): (args: {
+  id: string;
+  sessionId: string;
+}) => Promise<CallToolResult> {
+  return async ({ id, sessionId }) => {
+    try {
+      return toCardResult(await adoptCard(id, sessionId));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
