@@ -510,6 +510,7 @@ function isMissingTextIndex(error: unknown): boolean {
  * board-read path (expired Blocked -> NeedReview, idle in_progress -> Staled
  * — see {@link reconcileBlockedCards}/{@link reconcileStaledCards}) before
  * querying, so an agent survey matches what a human sees on the board (D6).
+ * A `text` search spans every status unless `status` was given (D10).
  * @param filter - Optional status/tags/text filters and result limit.
  * @returns Lean cards mapped to the client-facing shape.
  * @throws {AppError} {@link ErrorCode.SearchUnavailable} when `text` was given
@@ -523,13 +524,23 @@ export async function listCards(
 
   const db = await getDb();
 
-  // Explicit non-empty status filter (ANY-of) overrides the default exclusion
-  // — operator named exactly what they want, including Done/Archived. Empty
-  // array falls through to the default (D9).
+  // Keyword search over title+description (needs the text index from
+  // bootstrapIndexes); blank/whitespace text is not applied (D9). `hasText`
+  // also picks the status scope and the sort below.
+  const text = filter.text?.trim();
+  const hasText = Boolean(text);
+
+  // Status scope, in precedence order (D9):
+  // 1. an explicit non-empty filter wins — the caller named what they want
+  // 2. a keyword search spans every status: the finished card is exactly what
+  //    a caller searching for prior work needs to find (D10)
+  // 3. otherwise the board default hides done/archived
   const query: Filter<CardDocument> =
     filter.status && filter.status.length > 0
       ? { status: { $in: filter.status } }
-      : { status: { $nin: [Status.Archived, Status.Done] } };
+      : hasText
+        ? {}
+        : { status: { $nin: [Status.Archived, Status.Done] } };
 
   // ANY-of tags filter; empty array is never emitted as `{$in: []}` (matches
   // nothing) — instead it's just not applied (D9).
@@ -537,12 +548,6 @@ export async function listCards(
     query.tags = { $in: filter.tags };
   }
 
-  // Keyword search over title+description (needs the text index from
-  // bootstrapIndexes); blank/whitespace text is not applied (D9). `hasText`
-  // is reused below to pick the sort — a text query ranks by relevance,
-  // everything else stays newest-first.
-  const text = filter.text?.trim();
-  const hasText = Boolean(text);
   if (text) {
     query.$text = { $search: text };
   }

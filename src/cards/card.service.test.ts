@@ -1076,6 +1076,64 @@ describe("listCards text search", () => {
     const quotedIds = quoted.map((c) => c.id);
     expect(quotedIds).toEqual([exact.id]);
   });
+
+  it("reaches finished and archived work without the caller asking for it", async () => {
+    // Given matching cards parked in the two statuses a plain listing hides
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const finished = await createTask({
+      title: "quenelle supplier scoping",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(finished.id, Status.Done, {
+      caller: Caller.Agent,
+    });
+    const shelved = await createTask({
+      title: "quenelle rollout plan",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(shelved.id, Status.Archived, {
+      caller: Caller.Agent,
+    });
+
+    // When the keyword is searched with no status filter named
+    const searched = await listCards({ text: "quenelle" });
+
+    // Then both come back — a search that hides done work would miss exactly
+    // the cards it exists to find, and the agent would open a duplicate
+    const ids = searched.map((c) => c.id);
+    expect(ids).toContain(finished.id);
+    expect(ids).toContain(shelved.id);
+  });
+
+  it("still lets an explicit status filter narrow a keyword search", async () => {
+    // Given two cards matching the same keyword, one open and one finished
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const open = await createTask({
+      title: "sarsaparilla intake form",
+      origin: { type: OriginType.Manual },
+    });
+    const finished = await createTask({
+      title: "sarsaparilla retro",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(finished.id, Status.Done, {
+      caller: Caller.Agent,
+    });
+
+    // When the caller searches AND names the statuses they want
+    const searched = await listCards({
+      text: "sarsaparilla",
+      status: [Status.Todo],
+    });
+
+    // Then the named filter wins over the search's all-status reach
+    const ids = searched.map((c) => c.id);
+    expect(ids).toEqual([open.id]);
+  });
 });
 
 describe("updateTaskStatus", () => {
