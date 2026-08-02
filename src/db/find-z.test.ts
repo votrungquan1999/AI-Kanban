@@ -9,12 +9,17 @@ import { findManyZ, findOneAndUpdateZ, findOneZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
 import { useTestMongo } from "@/test/use-test-mongo";
 
+// Auto-incrementing default so repeated calls in the same describe/test
+// don't collide on `number` when the caller doesn't pass its own. Starts
+// well above this file's hard-coded numbers (1-3) so the ranges can never meet.
+let nextDefaultNumber = 1000;
+
 /** Builds a well-formed CardDocument for seeding. */
 function makeCardDocument(overrides: Partial<CardDocument> = {}): CardDocument {
   const now = new Date();
   return {
     _id: new ObjectId(),
-    number: 1,
+    number: nextDefaultNumber++,
     title: "A card",
     status: Status.Todo,
     priority: 0,
