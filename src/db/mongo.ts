@@ -1,4 +1,5 @@
 import { type ClientSession, type Db, MongoClient } from "mongodb";
+import { bootstrapIndexes, type IndexBuildFailure } from "@/db/indexes";
 
 interface MongoConnection {
   client: MongoClient;
@@ -8,6 +9,7 @@ interface MongoConnection {
 interface MongoCacheSlot {
   cache?: MongoConnection;
   connecting?: Promise<MongoConnection>;
+  bootstrapErrors?: IndexBuildFailure[];
 }
 
 declare global {
@@ -35,6 +37,37 @@ export async function getDb(): Promise<Db> {
   return connection.db;
 }
 
+/**
+ * Returns every failure from the most recent index-bootstrap attempt run by
+ * {@link connect} — more than one can fail since each index is isolated, and
+ * each carries the index name so a caller can tell whether it concerns them.
+ *
+ * Only `connect()` records here: calling `bootstrapIndexes` directly returns
+ * its failures to that caller and leaves this untouched. Empty both when
+ * nothing failed and when no connect-time bootstrap has run in this process.
+ * @returns The caught failures, or `[]`.
+ */
+export function getIndexBootstrapErrors(): IndexBuildFailure[] {
+  return slot().bootstrapErrors ?? [];
+}
+
+/**
+ * Records a bootstrap outcome, but only while `connection` is still the live
+ * one — a bootstrap that finishes after `closeMongo()` must not repopulate the
+ * slot that teardown just cleared, or the errors outlive the connection.
+ * @param mongo - The shared cache slot.
+ * @param connection - The connection the bootstrap ran against.
+ * @param errors - What the bootstrap caught (empty when all indexes built).
+ */
+function recordBootstrapErrors(
+  mongo: MongoCacheSlot,
+  connection: MongoConnection,
+  errors: IndexBuildFailure[],
+): void {
+  if (mongo.cache !== connection) return;
+  mongo.bootstrapErrors = errors;
+}
+
 function connect(): Promise<MongoConnection> {
   const mongo = slot();
   if (mongo.cache) return Promise.resolve(mongo.cache);
@@ -44,10 +77,50 @@ function connect(): Promise<MongoConnection> {
     if (!uri) throw new Error("MONGODB_URI is not set");
 
     const client = new MongoClient(uri);
-    mongo.connecting = client.connect().then((connected) => {
-      mongo.cache = { client, db: connected.db(process.env.MONGODB_DB) };
-      return mongo.cache;
-    });
+    mongo.connecting = client
+      .connect()
+      .then(async (connected) => {
+        // Held locally as well as cached: the slot can be cleared during the
+        // bootstrap await (closeMongo), and this caller was promised THIS
+        // connection — reading the slot back would hand it `undefined`.
+        const connection = { client, db: connected.db(process.env.MONGODB_DB) };
+        // Cached before the bootstrap await so calls arriving after this point
+        // skip it; callers already awaiting `connecting` still wait.
+        mongo.cache = connection;
+        try {
+          // bootstrapIndexes isolates and logs each createIndex failure
+          // itself and resolves with whatever it caught — record that for a
+          // caller to read back, rather than relying on a throw here.
+          recordBootstrapErrors(
+            mongo,
+            connection,
+            await bootstrapIndexes(connection.db),
+          );
+        } catch (error) {
+          // Fail-open backstop: bootstrapIndexes should never throw given its
+          // own per-index isolation, but a bootstrap failure must never take
+          // the board down even if something escapes that isolation.
+          console.error("Index bootstrap failed unexpectedly:", error);
+          recordBootstrapErrors(mongo, connection, [
+            {
+              index: "bootstrap",
+              error: error instanceof Error ? error : new Error(String(error)),
+            },
+          ]);
+        }
+        return connection;
+      })
+      .catch(async (error) => {
+        // Clear the slot on ANY rejection here — connect() failing, or the
+        // fulfilled continuation throwing (e.g. an invalid MONGODB_DB) —
+        // so the next call retries instead of replaying a wedged failure.
+        // Cache too: the continuation sets it before it can throw, and the
+        // client it points at is closed just below.
+        mongo.connecting = undefined;
+        mongo.cache = undefined;
+        await client.close().catch(() => {});
+        throw error;
+      });
   }
 
   return mongo.connecting;
@@ -81,4 +154,5 @@ export async function closeMongo(): Promise<void> {
     mongo.cache = undefined;
   }
   mongo.connecting = undefined;
+  mongo.bootstrapErrors = undefined;
 }

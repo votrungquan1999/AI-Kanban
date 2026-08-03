@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { beforeEach, describe, expect, it } from "vitest";
+import { nextNumber } from "@/cards/counters";
 import { recurringTasksCollection } from "@/db/collections";
 import { getDb } from "@/db/mongo";
 import {
@@ -18,7 +19,7 @@ async function seed(overrides: Partial<RecurringTaskDocument>): Promise<void> {
   const past = new Date(Date.now() - 60_000);
   const doc: RecurringTaskDocument = {
     _id: new ObjectId(),
-    number: 99,
+    number: overrides.number ?? (await nextNumber(db, "recurring_tasks")),
     title: "seeded",
     instruction: "do something",
     everyHours: 24,

@@ -1,26 +1,37 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { createTask, updateTaskStatus } from "@/cards/card.service";
+import { createCard, createTask, updateTaskStatus } from "@/cards/card.service";
 import type { CardDocument } from "@/cards/card.type";
 import { OriginType, RunState, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
+import { nextNumber } from "@/cards/counters";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
 import { bootstrapIndexes } from "@/db/indexes";
-import { getDb } from "@/db/mongo";
+import { closeMongo, getDb } from "@/db/mongo";
 import {
   createAppendDecision,
   createClaimCard,
   createCreateCard,
   createGetCardContext,
+  createListCards,
   createMarkDecisionOutdated,
   createSetStatus,
   createSetWorkspace,
   createUpdateCard,
 } from "@/mcp/dispatch-tools";
 import { useTestMongo } from "@/test/use-test-mongo";
+
+/** Mongo's generated name for the title+description text index. */
+const TEXT_INDEX_NAME = "title_text_description_text";
+
+/** Mongo's generated name for the partial-unique dedupeKey index. */
+const DEDUPE_INDEX_NAME = "dedupeKey_1";
+
+/** The dedupeKey the seeded colliding pair both carry. */
+const DUPLICATED_KEY = "session:session-collides";
 
 describe("claim_card handler", () => {
   useTestMongo();
@@ -399,5 +410,100 @@ describe("update_card handler", () => {
     expect(result.structuredContent).toMatchObject({
       code: ErrorCode.NotFound,
     });
+  });
+});
+
+describe("list_cards handler when the board's search index is missing", () => {
+  useTestMongo();
+
+  it("returns a readable error for a keyword search instead of an empty board", async () => {
+    // Given a board carrying a matching card, whose text index failed to build
+    const db = await getDb();
+    await createTask({
+      title: "searchable card",
+      origin: { type: OriginType.Manual },
+    });
+    await cardsCollection(db).dropIndex(TEXT_INDEX_NAME);
+
+    try {
+      // When the agent searches by keyword
+      const result = await createListCards()({ text: "searchable" });
+
+      // Then it is told search is unavailable, not handed an empty result it
+      // would read as "no such card exists" and duplicate
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toMatchObject({
+        code: ErrorCode.SearchUnavailable,
+      });
+    } finally {
+      await bootstrapIndexes(db);
+    }
+  });
+
+  it("never blames an unrelated index failure, nor leaks its key values, for missing search", async () => {
+    // Given a board that already holds duplicate open cards under one dedupe
+    // key — the production shape that makes the partial-unique index unbuildable
+    const db = await getDb();
+    await cardsCollection(db).dropIndex(DEDUPE_INDEX_NAME);
+    await createCard({
+      title: "first holder",
+      tags: [],
+      sessionId: "session-collides",
+    });
+    await cardsCollection(db).insertOne({
+      ...(await cardsCollection(db).findOne({ dedupeKey: DUPLICATED_KEY })),
+      _id: new ObjectId(),
+      number: await nextNumber(db, "cards"),
+    } as CardDocument);
+
+    // And a fresh connection, so the bootstrap runs against that data and
+    // records the failure the way it would on a real cold start
+    await closeMongo();
+    const reconnected = await getDb();
+    await cardsCollection(reconnected).dropIndex(TEXT_INDEX_NAME);
+
+    try {
+      // When the agent searches by keyword
+      const result = await createListCards()({ text: "holder" });
+
+      // Then the message does NOT pin the blame on dedupeKey, which has
+      // nothing to do with search — a wrong cause sends the operator after the
+      // wrong problem — and does not paste the colliding key's session id into
+      // the agent's context along the way
+      expect(result.isError).toBe(true);
+      const { message } = result.structuredContent as { message: string };
+      expect(message).not.toContain("dedupeKey");
+      expect(message).not.toContain("session-collides");
+    } finally {
+      await closeMongo();
+      const clean = await getDb();
+      await cardsCollection(clean).deleteMany({});
+      await bootstrapIndexes(clean);
+    }
+  });
+
+  it("still lists the board when the same call drops the keyword, so the agent can fall back", async () => {
+    // Given a board whose text index failed to build
+    const db = await getDb();
+    const created = await createTask({
+      title: "still listable",
+      origin: { type: OriginType.Manual },
+    });
+    await cardsCollection(db).dropIndex(TEXT_INDEX_NAME);
+
+    try {
+      // When the agent retries without the keyword, as the error told it to
+      const result = await createListCards()({});
+
+      // Then the board comes back intact — losing search never costs listing
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toMatchObject({
+        cards: expect.arrayContaining([
+          expect.objectContaining({ id: created.id, title: "still listable" }),
+        ]),
+      });
+    } finally {
+      await bootstrapIndexes(db);
+    }
   });
 });

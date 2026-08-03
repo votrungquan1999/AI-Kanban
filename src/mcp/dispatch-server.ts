@@ -12,6 +12,7 @@ import {
 } from "@/cards/card.schema";
 import { workspaceDeclarationSchema } from "@/cards/card.workspace.service";
 import {
+  createAdoptCard,
   createAppendDecision,
   createAppendProgress,
   createClaimCard,
@@ -31,10 +32,10 @@ import {
 import { recurringIdSchema } from "@/recurring/recurring.schema";
 
 /**
- * Registers the generic dispatch tools — the ten card tools (`claim_card`,
+ * Registers the generic dispatch tools — the eleven card tools (`claim_card`,
  * `create_card`, `list_cards`, `append_progress`, `append_decision`,
- * `mark_decision_outdated`, `get_card_context`, `set_status`, `set_workspace`,
- * `update_card`) plus the five recurring queue tools (`list_recurring_due`,
+ * `mark_decision_outdated`, `get_card_context`, `set_status`, `adopt_card`,
+ * `set_workspace`, `update_card`) plus the five recurring queue tools (`list_recurring_due`,
  * `list_recurring_runs`, `start_recurring`, `complete_recurring`,
  * `fail_recurring`) — onto an MCP server. Shared by both the stdio factory
  * ({@link createDispatchMcpServer}) and the HTTP route's adapter initializer,
@@ -65,7 +66,7 @@ export function registerDispatchTools(server: McpServer): void {
     "list_cards",
     {
       description:
-        "Survey the board as a compact per-card summary (id, number, title, status, nextAction, description truncated to 200 chars). By default hides done/archived cards; pass status to narrow to exactly those statuses (overrides the default). Pass tags to narrow to cards carrying any of the named tags. Pass text to search title/description by keyword (word-based match). Pass limit to cap the result count (default 50, hard-capped at 200).",
+        "Survey the board as a compact per-card summary (id, number, title, status, nextAction, description truncated to 200 chars). By default hides done/archived cards; pass status to narrow to exactly those statuses (overrides the default). Pass tags to narrow to cards carrying any of the named tags. Pass text to search title/description by keyword (word-based match) — results are relevance-ranked, best match first, so the top results can be trusted when checking for an existing card. A keyword search spans EVERY status including done and archived (unless you pass status yourself), so it finds finished work you might otherwise duplicate. If a keyword search comes back ERR_SEARCH_UNAVAILABLE the board's search index is missing — treat that as 'unknown', never as 'no such card'; retry without text and scan the listing. Pass limit to cap the result count (default 50, hard-capped at 200).",
       inputSchema: {
         status: z.array(statusSchema).optional(),
         tags: z.array(z.string()).optional(),
@@ -146,6 +147,16 @@ export function registerDispatchTools(server: McpServer): void {
       },
     },
     createSetStatus(),
+  );
+
+  server.registerTool(
+    "adopt_card",
+    {
+      description:
+        "Take over an existing card as this session's card, by id. Use it after finding a card for work you are resuming (e.g. via list_cards text search) so the board recognises the hand-over: it re-stamps the card's session ownership, which is what makes a later create_card from this session reclaim THIS card instead of opening a duplicate. Does not change the card's status — move it yourself with set_status if it is parked or finished. Refused with ERR_DUPLICATE when this session already holds an open card (resolve that one first) or when another session adopted this card first; refused with ERR_VALIDATION for a todo card (claim it with claim_card instead) or one carrying a non-session dedupeKey that adopting would destroy.",
+      inputSchema: { id: cardIdSchema, sessionId: z.string().min(1) },
+    },
+    createAdoptCard(),
   );
 
   server.registerTool(

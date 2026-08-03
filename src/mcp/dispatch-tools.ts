@@ -1,4 +1,5 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { adoptCard } from "@/cards/card.adopt.service";
 import { claimCard } from "@/cards/card.claim.service";
 import {
   appendDecision,
@@ -110,9 +111,14 @@ export function createCreateCard(): (args: {
  * Builds the `list_cards` handler: surveys the board as a compact per-card
  * summary. `status` narrows to exactly those statuses (overrides the default
  * hide-done/archived); `tags` narrows to cards with any named tag; `text` is
- * a keyword match on title/description; each falls through to "not applied"
- * when empty/whitespace/omitted. `limit` caps the count (default ~50, capped
- * at 200 — see {@link listCards}).
+ * a keyword match on title/description, relevance-ranked best-first and
+ * spanning every status unless `status` was given; each falls through to "not
+ * applied" when empty/whitespace/omitted. `limit` caps the count (default ~50,
+ * capped at 200 — see {@link listCards}).
+ *
+ * A keyword search issued while the board's search index is missing returns a
+ * readable `ERR_SEARCH_UNAVAILABLE` result — the agent must be able to tell
+ * that apart from "no card matched", or it opens a duplicate.
  * @returns A handler returning the lean cards under a `cards` key.
  */
 export function createListCards(): (args: {
@@ -122,7 +128,14 @@ export function createListCards(): (args: {
   text?: string;
 }) => Promise<CallToolResult> {
   return async ({ status, tags, limit, text }) => {
-    return toCardListResult(await listCards({ status, tags, limit, text }));
+    try {
+      return toCardListResult(await listCards({ status, tags, limit, text }));
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
   };
 }
 
@@ -266,6 +279,31 @@ export function createSetStatus(): (args: {
         force,
       });
       return toCardResult(card);
+    } catch (error) {
+      if (error instanceof AppError) {
+        return appErrorToToolResult(error);
+      }
+      throw error;
+    }
+  };
+}
+
+/**
+ * Builds the `adopt_card` handler: hands an existing card to the session now
+ * working it, so the server's own idempotency recognises the adoption and a
+ * later `create_card` from that session reclaims this card instead of opening
+ * a second one. A card the session cannot take over (it already holds an open
+ * card) comes back as a readable `ERR_DUPLICATE` result rather than a silently
+ * dropped re-stamp.
+ * @returns A handler that transfers the card to the calling session.
+ */
+export function createAdoptCard(): (args: {
+  id: string;
+  sessionId: string;
+}) => Promise<CallToolResult> {
+  return async ({ id, sessionId }) => {
+    try {
+      return toCardResult(await adoptCard(id, sessionId));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);

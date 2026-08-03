@@ -12,12 +12,13 @@ import type { CardDocument } from "@/cards/card.type";
 import { OriginType, RunState, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
+import { nextNumber } from "@/cards/counters";
 import { ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
-import { cardsCollection } from "@/db/collections";
+import { cardsCollection, countersCollection } from "@/db/collections";
 import { bootstrapIndexes } from "@/db/indexes";
 import { getDb } from "@/db/mongo";
-import { useTestMongo } from "@/test/use-test-mongo";
+import { clearCollectionsEachTest, useTestMongo } from "@/test/use-test-mongo";
 
 describe("createTask", () => {
   useTestMongo();
@@ -530,7 +531,7 @@ describe("card workspace bookkeeping", () => {
     const now = new Date();
     const legacyDoc = {
       _id,
-      number: 1,
+      number: await nextNumber(db, "cards"),
       title: "legacy card",
       status: Status.Todo,
       priority: 0,
@@ -877,9 +878,17 @@ describe("listCards", () => {
     // Given more than 200 cards, seeded directly for speed
     const db = await getDb();
     const now = new Date();
+    // Reserve the whole 205-number range up front so a concurrent nextNumber
+    // call can never land inside it — advancing by 1 and consuming 205 would
+    // leave the counter behind the last number this seed actually used.
+    const base = await nextNumber(db, "cards");
+    await countersCollection(db).updateOne(
+      { _id: "cards" },
+      { $inc: { seq: 204 } },
+    );
     const docs: CardDocument[] = Array.from({ length: 205 }, (_, i) => ({
       _id: new ObjectId(),
-      number: i + 1,
+      number: base + i,
       title: `bulk ${i}`,
       status: Status.Todo,
       priority: 0,
@@ -910,14 +919,15 @@ describe("listCards", () => {
   });
 });
 
-// Own describe (own useTestMongo instance): the sibling "listCards" block's
-// Step-8 test bulk-inserts hard-coded card numbers with no unique index built
-// yet, which would collide with the `number` unique index bootstrapIndexes
-// builds here if run against that same shared instance.
+// Own describe (own useTestMongo instance): keeps this block's explicit
+// bootstrapIndexes calls and search-specific seeds isolated from the sibling
+// "listCards" describe's own seeds (including its 205-card bulk insert for
+// the D11 clamp test) — each describe gets its own replica set.
 describe("listCards text search", () => {
   useTestMongo();
+  clearCollectionsEachTest();
 
-  it("finds cards by a keyword in the title or description (Step 10)", async () => {
+  it("finds cards by a keyword in the title or description", async () => {
     // Given the text index (not auto-run by useTestMongo — see D5) and three
     // cards: one matching by title, one by description, one matching neither
     const db = await getDb();
@@ -962,6 +972,167 @@ describe("listCards text search", () => {
 
     // Then it behaves like no filter at all — the card is still returned
     expect(surveyed.some((c) => c.id === card.id)).toBe(true);
+  });
+
+  it("ranks the best keyword match first even when it is not the most recently touched", async () => {
+    // Given the text index and two matching cards: one touched just now but
+    // matching the keyword once, one touched long ago but matching it several
+    // times across title and description
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const weakButRecent = await createTask({
+      title: "marmalade notes",
+      origin: { type: OriginType.Manual },
+    });
+    const strongButOld = await createTask({
+      title: "marmalade marmalade marmalade pipeline",
+      description: "marmalade marmalade",
+      origin: { type: OriginType.Manual },
+    });
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(strongButOld.id) },
+      { $set: { updatedAt: new Date(Date.now() - 60_000) } },
+    );
+
+    // When surveyed with a keyword search
+    const surveyed = await listCards({ text: "marmalade" });
+    const ids = surveyed.map((c) => c.id);
+
+    // Then both matches are present (a vacuous pass if the stronger one fell
+    // out of the result set is exactly the regression this test guards
+    // against) and the stronger match comes back first despite being older
+    expect(ids).toContain(strongButOld.id);
+    expect(ids).toContain(weakButRecent.id);
+    expect(ids.indexOf(strongButOld.id)).toBeLessThan(
+      ids.indexOf(weakButRecent.id),
+    );
+  });
+
+  it("breaks a tie between identically-scoring matches by recency, deterministically", async () => {
+    // Given two cards with identical title text (so $text scores them the
+    // same) and different updatedAt times
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const older = await createTask({
+      title: "tiebreak marmalade batch",
+      origin: { type: OriginType.Manual },
+    });
+    const newer = await createTask({
+      title: "tiebreak marmalade batch",
+      origin: { type: OriginType.Manual },
+    });
+    await cardsCollection(db).updateOne(
+      { _id: new ObjectId(older.id) },
+      { $set: { updatedAt: new Date(Date.now() - 60_000) } },
+    );
+
+    // When surveyed with a keyword search, twice
+    const first = (await listCards({ text: "marmalade" })).map((c) => c.id);
+    const second = (await listCards({ text: "marmalade" })).map((c) => c.id);
+
+    // Then the tie resolves to recency order, the same way every time
+    expect(first).toEqual([newer.id, older.id]);
+    expect(second).toEqual(first);
+  });
+
+  it("matches a hyphenated ticket id as an OR of its halves, and only the exact id when phrase-quoted", async () => {
+    // Given the text index and four cards: the exact ticket id, one that only
+    // shares the "rise" half, one that only shares the "14881" half, and one
+    // that shares neither
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const exact = await createTask({
+      title: "RISE-14881 supplier profile scoping",
+      origin: { type: OriginType.Manual },
+    });
+    const risePartial = await createTask({
+      title: "The rise of the machines",
+      origin: { type: OriginType.Manual },
+    });
+    const numberPartial = await createTask({
+      title: "Ticket 14881 follow-up",
+      origin: { type: OriginType.Manual },
+    });
+    const unrelated = await createTask({
+      title: "Completely unrelated work",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When searched unquoted, Then the hyphen tokenises into an OR of "rise"
+    // and "14881" — both partial matches return, the exact id returns, the
+    // unrelated card does not
+    const unquoted = await listCards({ text: "RISE-14881" });
+    const unquotedIds = unquoted.map((c) => c.id);
+    expect(unquotedIds).toContain(exact.id);
+    expect(unquotedIds).toContain(risePartial.id);
+    expect(unquotedIds).toContain(numberPartial.id);
+    expect(unquotedIds).not.toContain(unrelated.id);
+
+    // When searched phrase-quoted, Then only the card carrying the whole id matches
+    const quoted = await listCards({ text: '"RISE-14881"' });
+    const quotedIds = quoted.map((c) => c.id);
+    expect(quotedIds).toEqual([exact.id]);
+  });
+
+  it("reaches finished and archived work without the caller asking for it", async () => {
+    // Given matching cards parked in the two statuses a plain listing hides
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const finished = await createTask({
+      title: "quenelle supplier scoping",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(finished.id, Status.Done, {
+      caller: Caller.Agent,
+    });
+    const shelved = await createTask({
+      title: "quenelle rollout plan",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(shelved.id, Status.Archived, {
+      caller: Caller.Agent,
+    });
+
+    // When the keyword is searched with no status filter named
+    const searched = await listCards({ text: "quenelle" });
+
+    // Then both come back — a search that hides done work would miss exactly
+    // the cards it exists to find, and the agent would open a duplicate
+    const ids = searched.map((c) => c.id);
+    expect(ids).toContain(finished.id);
+    expect(ids).toContain(shelved.id);
+  });
+
+  it("still lets an explicit status filter narrow a keyword search", async () => {
+    // Given two cards matching the same keyword, one open and one finished
+    const db = await getDb();
+    await bootstrapIndexes(db);
+
+    const open = await createTask({
+      title: "sarsaparilla intake form",
+      origin: { type: OriginType.Manual },
+    });
+    const finished = await createTask({
+      title: "sarsaparilla retro",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(finished.id, Status.Done, {
+      caller: Caller.Agent,
+    });
+
+    // When the caller searches AND names the statuses they want
+    const searched = await listCards({
+      text: "sarsaparilla",
+      status: [Status.Todo],
+    });
+
+    // Then the named filter wins over the search's all-status reach
+    const ids = searched.map((c) => c.id);
+    expect(ids).toEqual([open.id]);
   });
 });
 

@@ -22,13 +22,14 @@ async function connectClient(): Promise<Client> {
 }
 
 describe("createDispatchMcpServer", () => {
-  it("registers exactly the ten card tools plus the five recurring queue tools", async () => {
+  it("registers exactly the eleven card tools plus the five recurring queue tools", async () => {
     // Given the generic dispatch server, When a client connects and lists tools
     const client = await connectClient();
     const { tools } = await client.listTools();
 
-    // Then exactly the fifteen dispatch tools are exposed — nothing more
+    // Then exactly the sixteen dispatch tools are exposed — nothing more
     expect(tools.map((tool) => tool.name).sort()).toEqual([
+      "adopt_card",
       "append_decision",
       "append_progress",
       "claim_card",

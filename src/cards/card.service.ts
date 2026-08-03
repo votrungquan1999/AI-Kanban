@@ -36,8 +36,8 @@ import {
   findOneAndUpdateZ,
   findOneZ,
 } from "@/db/find-z";
-import { OPEN_STATUSES } from "@/db/indexes";
-import { getDb, withTransaction } from "@/db/mongo";
+import { OPEN_STATUSES, TEXT_INDEX } from "@/db/indexes";
+import { getDb, getIndexBootstrapErrors, withTransaction } from "@/db/mongo";
 import { getDefaultBlockInterval } from "@/settings/settings.service";
 
 /** Optional filter for {@link listTasks}. */
@@ -80,7 +80,7 @@ interface UpdateStatusOptions {
 }
 
 /** True if the error is a MongoDB duplicate-key (E11000) error. */
-function isDuplicateKeyError(error: unknown): boolean {
+export function isDuplicateKeyError(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -173,7 +173,10 @@ export async function createTask(input: CreateTaskInput): Promise<Card> {
  * @param version - 1 for the base card, >1 for a diverged card.
  * @returns The dedupeKey string.
  */
-function sessionDedupeKey(sessionId: string, version: number): string {
+/** Prefix marking a dedupeKey as session-owned rather than externally produced. */
+export const SESSION_KEY_PREFIX = "session:";
+
+export function sessionDedupeKey(sessionId: string, version: number): string {
   return version <= 1
     ? `session:${sessionId}`
     : `session:${sessionId}:${version}`;
@@ -485,6 +488,41 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
   return docs.map(toClientCard);
 }
 
+/** Mongo's `IndexNotFound`, raised by a `$text` query with no text index. */
+const INDEX_NOT_FOUND_CODE = 27;
+
+/**
+ * Recognises the driver error a `$text` query raises when the text index is
+ * absent — matched on the numeric server code, not the message text.
+ * @param error - The value thrown by the find.
+ * @returns True when the failure was a missing text index.
+ */
+function isMissingTextIndex(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === INDEX_NOT_FOUND_CODE
+  );
+}
+
+/**
+ * Why the text index is missing, when the last bootstrap recorded a reason —
+ * a failed build logs there and nowhere the caller can reach. Narrowed to the
+ * TEXT index only (D13): any other index failing has nothing to do with search,
+ * so reporting it would name a wrong cause and would paste that index's key
+ * values (e.g. a colliding `dedupeKey`, which embeds a session id) into an
+ * agent-visible message.
+ * @returns A leading-separator detail string, or `""`.
+ */
+function bootstrapDetail(): string {
+  const textFailures = getIndexBootstrapErrors().filter(
+    (failure) => failure.index === TEXT_INDEX,
+  );
+  if (textFailures.length === 0) return "";
+  return `. Index bootstrap reported: ${textFailures.map((failure) => failure.error.message).join("; ")}`;
+}
+
 /**
  * Surveys the board as a compact per-card summary (id, number, title, status,
  * nextAction, description truncated to 200 code points) via
@@ -492,8 +530,11 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Card[]> {
  * board-read path (expired Blocked -> NeedReview, idle in_progress -> Staled
  * — see {@link reconcileBlockedCards}/{@link reconcileStaledCards}) before
  * querying, so an agent survey matches what a human sees on the board (D6).
+ * A `text` search spans every status unless `status` was given (D10).
  * @param filter - Optional status/tags/text filters and result limit.
  * @returns Lean cards mapped to the client-facing shape.
+ * @throws {AppError} {@link ErrorCode.SearchUnavailable} when `text` was given
+ * but the text index is missing; an unfiltered listing still works.
  */
 export async function listCards(
   filter: ListCardsFilter = {},
@@ -503,13 +544,23 @@ export async function listCards(
 
   const db = await getDb();
 
-  // Explicit non-empty status filter (ANY-of) overrides the default exclusion
-  // — operator named exactly what they want, including Done/Archived. Empty
-  // array falls through to the default (D9).
+  // Keyword search over title+description (needs the text index from
+  // bootstrapIndexes); blank/whitespace text is not applied (D9). `hasText`
+  // also picks the status scope and the sort below.
+  const text = filter.text?.trim();
+  const hasText = Boolean(text);
+
+  // Status scope, in precedence order (D9):
+  // 1. an explicit non-empty filter wins — the caller named what they want
+  // 2. a keyword search spans every status: the finished card is exactly what
+  //    a caller searching for prior work needs to find (D10)
+  // 3. otherwise the board default hides done/archived
   const query: Filter<CardDocument> =
     filter.status && filter.status.length > 0
       ? { status: { $in: filter.status } }
-      : { status: { $nin: [Status.Archived, Status.Done] } };
+      : hasText
+        ? {}
+        : { status: { $nin: [Status.Archived, Status.Done] } };
 
   // ANY-of tags filter; empty array is never emitted as `{$in: []}` (matches
   // nothing) — instead it's just not applied (D9).
@@ -517,12 +568,8 @@ export async function listCards(
     query.tags = { $in: filter.tags };
   }
 
-  // Keyword search over title+description (D3, needs the text index from
-  // bootstrapIndexes); blank/whitespace text is not applied (D9). No
-  // `$meta: "textScore"` sort — the `updatedAt` sort below stays the sole
-  // ordering.
-  if (filter.text && filter.text.trim().length > 0) {
-    query.$text = { $search: filter.text };
+  if (text) {
+    query.$text = { $search: text };
   }
 
   // Paired with `leanCardDocumentSchema` (card.document.schema.ts) — no
@@ -544,17 +591,37 @@ export async function listCards(
     MAX_LIST_CARDS_LIMIT,
   );
 
-  // `updatedAt` is deliberately not in the lean projection above — Mongo
-  // sorts before projecting, so sorting on a non-projected field is fine.
-  const docs = await findManyProjectedZ(
-    cardsCollection(db),
-    query,
-    projection,
-    leanCardDocumentSchema,
-    { sort: { updatedAt: -1 }, limit },
-  );
+  // Neither `updatedAt` nor `score` is in the lean projection above — Mongo
+  // sorts/scores before projecting, so a non-projected sort field is fine.
+  // A text query ranks by relevance (best match first); otherwise newest
+  // first.
+  try {
+    const docs = await findManyProjectedZ(
+      cardsCollection(db),
+      query,
+      projection,
+      leanCardDocumentSchema,
+      {
+        sort: hasText
+          ? { score: { $meta: "textScore" }, updatedAt: -1 }
+          : { updatedAt: -1 },
+        limit,
+      },
+    );
 
-  return docs.map(toLeanCard);
+    return docs.map(toLeanCard);
+  } catch (error) {
+    // A $text query with no text index is the one failure a caller can act on
+    // — an unsearched listing still works, so name it rather than letting an
+    // opaque driver error escape as if the board were empty.
+    if (isMissingTextIndex(error)) {
+      throw new AppError(
+        ErrorCode.SearchUnavailable,
+        `keyword search is unavailable — the board's search index is not built; retry without \`text\`${bootstrapDetail()}`,
+      );
+    }
+    throw error;
+  }
 }
 
 /**
