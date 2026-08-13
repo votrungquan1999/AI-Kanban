@@ -144,6 +144,71 @@ describe("appendDecision", () => {
     });
   });
 
+  it("rejects an over-long decision naming its actual length and the limit, storing nothing", async () => {
+    // Given an existing card
+    const card = await createCard({
+      title: "Too long",
+      tags: [],
+      sessionId: "session-1",
+    });
+
+    // When a decision one character past the limit is recorded, Then it is
+    // refused naming both numbers — an agent that is only told "too long" has
+    // to guess how much to cut
+    const overLong = "x".repeat(201);
+    await expect(appendDecision(card.id, overLong)).rejects.toMatchObject({
+      code: ErrorCode.Validation,
+      message: expect.stringMatching(/\b201\b.*\b200\b/),
+    });
+
+    // And the rejected entry was not stored
+    const after = await getTask(card.id);
+    expect(after.decisions).toEqual([]);
+  });
+
+  it("rejects an over-long why naming its actual length and the limit, storing nothing", async () => {
+    // Given an existing card
+    const card = await createCard({
+      title: "Why too long",
+      tags: [],
+      sessionId: "session-1",
+    });
+
+    // When the reason runs one character past its own, larger limit
+    const overLongWhy = "y".repeat(401);
+    await expect(
+      appendDecision(card.id, "a decision short enough to pass", overLongWhy),
+    ).rejects.toMatchObject({
+      code: ErrorCode.Validation,
+      message: expect.stringMatching(/\b401\b.*\b400\b/),
+    });
+
+    // And the acceptable decision it arrived with was not written either
+    const after = await getTask(card.id);
+    expect(after.decisions).toEqual([]);
+  });
+
+  it("stores an entry sitting exactly on both limits without truncating it", async () => {
+    // Given an existing card
+    const card = await createCard({
+      title: "Right at the line",
+      tags: [],
+      sessionId: "session-1",
+    });
+
+    // When a decision and reason land exactly on their limits
+    const atLimit = "d".repeat(200);
+    const whyAtLimit = "w".repeat(400);
+    await appendDecision(card.id, atLimit, whyAtLimit);
+
+    // Then both are stored whole — the limit is inclusive, and a rejection
+    // never silently becomes a truncation
+    const after = await getTask(card.id);
+    expect(after.decisions).toHaveLength(1);
+    expect(after.decisions[0].decision).toBe(atLimit);
+    expect(after.decisions[0].why).toBe(whyAtLimit);
+  });
+
   it("normalizes a whitespace-only why to absent rather than storing it", async () => {
     // Given an existing card
     const card = await createCard({

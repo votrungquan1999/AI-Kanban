@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
   cardIdSchema,
+  cardViewSchema,
   createCardInputSchema,
   decisionIndexSchema,
   decisionTextSchema,
@@ -129,8 +130,8 @@ export function registerDispatchTools(server: McpServer): void {
     "get_card_context",
     {
       description:
-        "Read a card's full task context by id, including its decision log — read it before resuming work to see prior decisions.",
-      inputSchema: { id: cardIdSchema },
+        "Read a card's task context by id — read it before resuming work to see prior decisions. Defaults to a lean resume view: the header, still-current decisions (each with the index mark_decision_outdated uses), the newest progress note, and counts of what was left out. Pass view:'decisions' for the full decision log with the why behind each, or view:'full' for the entire card.",
+      inputSchema: { id: cardIdSchema, view: cardViewSchema.optional() },
     },
     createGetCardContext(),
   );

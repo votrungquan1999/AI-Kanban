@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OriginType, Status } from "@/cards/card.type";
+import { CardView, OriginType, Status } from "@/cards/card.type";
 
 /** A 24-character hex Mongo ObjectId string. */
 export const cardIdSchema = z
@@ -8,6 +8,9 @@ export const cardIdSchema = z
 
 /** Card status, accepting any lifecycle status (board columns + archived). */
 export const statusSchema = z.enum(Status);
+
+/** How much of a card a read returns; omitted means the lean resume view. */
+export const cardViewSchema = z.enum(CardView);
 
 /** Where a card came from (discriminated on `type`). */
 export const originSchema = z.discriminatedUnion("type", [
@@ -75,6 +78,17 @@ export type ParsedCreateCardInput = z.output<typeof createCardInputSchema>;
 export const progressNoteSchema = z.string().min(1, "note is required");
 
 /** A single decision's text; trimmed, then must be non-empty (D10 R1). */
+/**
+ * Longest a decision headline may be. Deliberately NOT a `.max()` on
+ * {@link decisionTextSchema}: that would reject at the MCP schema boundary with
+ * a generic "Input validation error", losing the actual length the agent needs
+ * in order to know how much to cut.
+ */
+export const DECISION_MAX_LENGTH = 200;
+
+/** Longest a decision's reason may be; same rationale as {@link DECISION_MAX_LENGTH}. */
+export const DECISION_WHY_MAX_LENGTH = 400;
+
 export const decisionTextSchema = z
   .string()
   .trim()

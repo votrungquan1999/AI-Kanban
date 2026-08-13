@@ -17,6 +17,16 @@ export enum Status {
   Archived = "archived",
 }
 
+/** How much of a card a read returns. */
+export enum CardView {
+  /** Default: header, current decisions, newest progress note, omitted counts. */
+  Resume = "resume",
+  /** The decision log in full, including each `why`. */
+  Decisions = "decisions",
+  /** The entire card, every field. */
+  Full = "full",
+}
+
 /** What a card originated from. */
 export enum OriginType {
   Manual = "manual",

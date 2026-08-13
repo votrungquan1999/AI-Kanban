@@ -1,7 +1,11 @@
 import { ObjectId } from "mongodb";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
-import { decisionTextSchema } from "@/cards/card.schema";
+import {
+  DECISION_MAX_LENGTH,
+  DECISION_WHY_MAX_LENGTH,
+  decisionTextSchema,
+} from "@/cards/card.schema";
 import { reviveStaledCard } from "@/cards/card.staled.service";
 import type { Card } from "@/cards/card.type";
 import { DecisionStatus } from "@/cards/card.type";
@@ -34,10 +38,26 @@ export async function appendDecision(
     throw new AppError(ErrorCode.Validation, "decision must not be empty");
   }
   const parsedDecision = parsed.data;
+  // Name the actual length: an agent told only "too long" has to guess how
+  // much to cut, and a card read costs more the longer these entries get.
+  if (parsedDecision.length > DECISION_MAX_LENGTH) {
+    throw new AppError(
+      ErrorCode.Validation,
+      `decision is ${parsedDecision.length} characters, over the ${DECISION_MAX_LENGTH} limit — record the headline and move the detail to the why`,
+    );
+  }
   // Blank/whitespace-only why collapses to absent (D10 R4) — mirrors the
   // nextAction blank-clears convention.
   const trimmedWhy = why?.trim();
   const normalizedWhy = trimmedWhy ? trimmedWhy : undefined;
+  // Checked before the write, so a rejected reason never leaves its decision
+  // half-recorded.
+  if (normalizedWhy && normalizedWhy.length > DECISION_WHY_MAX_LENGTH) {
+    throw new AppError(
+      ErrorCode.Validation,
+      `why is ${normalizedWhy.length} characters, over the ${DECISION_WHY_MAX_LENGTH} limit — give the alternative and why it lost, not the discussion`,
+    );
+  }
   const db = await getDb();
 
   const updated = await findOneAndUpdateZ(

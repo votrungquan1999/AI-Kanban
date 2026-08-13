@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { statusSchema } from "@/cards/card.schema";
+import { cardViewSchema, statusSchema } from "@/cards/card.schema";
 import { createGetMyTask, createSetMyStatus } from "@/mcp/tools";
 
 /** Options for {@link createMcpServer}. */
@@ -22,7 +22,11 @@ export function createMcpServer({ cardId }: CreateMcpServerOptions): McpServer {
 
   server.registerTool(
     "get_my_task",
-    { description: "Read the card this session is assigned to." },
+    {
+      description:
+        "Read the card this session is assigned to. Defaults to a lean resume view: the header, still-current decisions, the newest progress note, and counts of what was left out. Pass view:'decisions' for the full decision log with the why behind each, or view:'full' for the entire card.",
+      inputSchema: { view: cardViewSchema.optional() },
+    },
     createGetMyTask(cardId),
   );
 

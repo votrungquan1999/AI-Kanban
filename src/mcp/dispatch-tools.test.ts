@@ -1,8 +1,13 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { createCard, createTask, updateTaskStatus } from "@/cards/card.service";
+import {
+  createCard,
+  createTask,
+  getTask,
+  updateTaskStatus,
+} from "@/cards/card.service";
 import type { CardDocument } from "@/cards/card.type";
-import { OriginType, RunState, Status } from "@/cards/card.type";
+import { CardView, OriginType, RunState, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind, EventOutcome } from "@/cards/card-event.type";
 import { nextNumber } from "@/cards/counters";
@@ -13,6 +18,7 @@ import { bootstrapIndexes } from "@/db/indexes";
 import { closeMongo, getDb } from "@/db/mongo";
 import {
   createAppendDecision,
+  createAppendProgress,
   createClaimCard,
   createCreateCard,
   createGetCardContext,
@@ -87,9 +93,15 @@ describe("create_card handler", () => {
       status: Status.Todo,
     });
 
-    // Then a session-less standalone todo card comes back
+    // Then the ack names the filed card and its resulting status
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).toMatchObject({
+    expect(result.structuredContent).toMatchObject({ status: Status.Todo });
+
+    // And the card itself is session-less — read back via the id the ack
+    // carries, because a write acknowledges rather than echoing the card
+    const { id } = result.structuredContent as { id: string };
+    const context = await createGetCardContext()({ id, view: CardView.Full });
+    expect(context.structuredContent).toMatchObject({
       title: "backlog via tool",
       status: Status.Todo,
       sessionId: null,
@@ -117,6 +129,127 @@ describe("get_card_context handler", () => {
       title: "read context",
       status: Status.Todo,
     });
+  });
+
+  it("returns a resume view by default: current decisions with their index, the latest progress note, and counts of what was left out", async () => {
+    // Given a card whose first decision has been superseded, and which has
+    // collected more than one progress note
+    const created = await createTask({
+      title: "resume me",
+      origin: { type: OriginType.Manual },
+    });
+    await createAppendDecision()({
+      id: created.id,
+      decision: "first choice",
+      why: "the reason the first one won",
+    });
+    await createAppendDecision()({
+      id: created.id,
+      decision: "second choice",
+      why: "the reason the second one won",
+    });
+    await createMarkDecisionOutdated()({
+      id: created.id,
+      index: 0,
+      supersededByIndex: 1,
+    });
+    await createAppendProgress()({ id: created.id, note: "an early note" });
+    await createAppendProgress()({ id: created.id, note: "the latest note" });
+
+    // When a resuming session reads the card
+    const result = await createGetCardContext()({ id: created.id });
+
+    // Then it gets what it needs to re-orient, and is told what was withheld
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      id: created.id,
+      title: "resume me",
+      status: Status.Todo,
+      latestProgress: { note: "the latest note" },
+      omitted: { outdatedDecisions: 1, earlierProgress: 1 },
+    });
+
+    // And each surviving decision keeps the index mark_decision_outdated
+    // addresses it by — filtering the log would otherwise shift every target
+    expect(
+      (result.structuredContent as { decisions: unknown[] }).decisions,
+    ).toEqual([{ index: 1, decision: "second choice" }]);
+
+    // And the reasoning prose stays behind until it is actually asked for
+    expect(JSON.stringify(result.structuredContent)).not.toContain(
+      "the reason the second one won",
+    );
+  });
+
+  it("returns the entire card, superseded decisions included, when view is full", async () => {
+    // Given a card whose first decision has been superseded
+    const created = await createTask({
+      title: "full view",
+      origin: { type: OriginType.Manual },
+    });
+    await createAppendDecision()({
+      id: created.id,
+      decision: "first choice",
+      why: "the reason the first one won",
+    });
+    await createAppendDecision()({ id: created.id, decision: "second choice" });
+    await createMarkDecisionOutdated()({
+      id: created.id,
+      index: 0,
+      supersededByIndex: 1,
+    });
+
+    // When the caller explicitly asks for the full view
+    const result = await createGetCardContext()({
+      id: created.id,
+      view: CardView.Full,
+    });
+
+    // Then it is the card exactly as this read returned it before the resume
+    // view existed — every field, both decisions, and their reasoning
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toEqual(await getTask(created.id));
+  });
+
+  it("returns the decision log with its reasoning, and nothing else, when view is decisions", async () => {
+    // Given a card carrying a reasoned decision, a description and a note
+    const created = await createTask({
+      title: "why lookup",
+      description: "a description a resuming session does not need",
+      origin: { type: OriginType.Manual },
+    });
+    await createAppendDecision()({
+      id: created.id,
+      decision: "the chosen route",
+      why: "the reason it beat the alternative",
+    });
+    await createAppendProgress()({ id: created.id, note: "a progress note" });
+
+    // When the caller follows up on reasoning the resume view withheld
+    const result = await createGetCardContext()({
+      id: created.id,
+      view: CardView.Decisions,
+    });
+
+    // Then the why is available without asking for the whole card
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      id: created.id,
+      decisions: [
+        {
+          index: 0,
+          decision: "the chosen route",
+          why: "the reason it beat the alternative",
+        },
+      ],
+    });
+
+    // And the rest of the card was not the price of getting it
+    const returned = JSON.stringify(result.structuredContent);
+    expect(returned).not.toContain(
+      "a description a resuming session does not need",
+    );
+    expect(returned).not.toContain("a progress note");
   });
 });
 
@@ -277,9 +410,14 @@ describe("set_workspace handler", () => {
       repos,
     });
 
-    // Then the tool succeeds and the card reflects the declared workspace state
+    // Then the tool succeeds and the card reflects the declared workspace
+    // state — read back, because a write acknowledges rather than echoing
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).toMatchObject({
+    const context = await createGetCardContext()({
+      id: created.id,
+      view: CardView.Full,
+    });
+    expect(context.structuredContent).toMatchObject({
       id: created.id,
       workspacePath: "workspaces/card-1",
       repos,
@@ -290,7 +428,7 @@ describe("set_workspace handler", () => {
 describe("append_decision handler", () => {
   useTestMongo();
 
-  it("records a decision on a card by id and returns it as success", async () => {
+  it("records a decision on a card by id, readable back from the card context", async () => {
     // Given an existing card
     const created = await createTask({
       title: "record via tool",
@@ -303,11 +441,107 @@ describe("append_decision handler", () => {
       decision: "route the decision through the dispatch tool",
     });
 
-    // Then the decision comes back on the card as success structured content
+    // Then the tool succeeds and the decision is durably on the card — read
+    // back, because a write acknowledges rather than echoing its own entries
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).toMatchObject({
+    const context = await createGetCardContext()({
+      id: created.id,
+      view: CardView.Full,
+    });
+    expect(context.structuredContent).toMatchObject({
       id: created.id,
       decisions: [{ decision: "route the decision through the dispatch tool" }],
+    });
+  });
+
+  it("acknowledges the append with counts instead of echoing the card's entries", async () => {
+    // Given a card that already carries one decision
+    const created = await createTask({
+      title: "ack not echo",
+      origin: { type: OriginType.Manual },
+    });
+    await createAppendDecision()({
+      id: created.id,
+      decision: "the first decision",
+    });
+
+    // When a second decision is recorded
+    const result = await createAppendDecision()({
+      id: created.id,
+      decision: "the second decision",
+    });
+
+    // Then the result identifies the card and counts what it holds, and carries
+    // nothing else — so a write cannot cost more as the card grows
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toEqual({
+      id: created.id,
+      number: created.number,
+      status: Status.Todo,
+      decisionCount: 2,
+      progressCount: 0,
+    });
+    expect(result.content[0]).toEqual({
+      type: "text",
+      text: JSON.stringify(result.structuredContent),
+    });
+  });
+
+  it("keeps the acknowledgement flat as the card fills up", async () => {
+    // Given a card already carrying long decisions and progress notes
+    const created = await createTask({
+      title: "fills up",
+      origin: { type: OriginType.Manual },
+    });
+    for (let index = 0; index < 8; index++) {
+      await createAppendDecision()({
+        id: created.id,
+        decision: `wordy decision ${index} here `.repeat(6),
+        why: `a wordy reason it beat the alternative `.repeat(8),
+      });
+      await createAppendProgress()({
+        id: created.id,
+        note: `a long progress note ${index} `.repeat(8),
+      });
+    }
+
+    // When one more decision is recorded
+    const result = await createAppendDecision()({
+      id: created.id,
+      decision: "the ninth decision",
+    });
+
+    // Then none of the accumulated text comes back — only identity and counts
+    expect(result.structuredContent).toEqual({
+      id: created.id,
+      number: created.number,
+      status: Status.Todo,
+      decisionCount: 9,
+      progressCount: 8,
+    });
+
+    // And the write stays cheap regardless of how much the card now holds
+    expect(JSON.stringify(result.structuredContent).length).toBeLessThan(150);
+  });
+
+  it("surfaces an over-long decision to the agent as ERR_VALIDATION carrying the actual length", async () => {
+    // Given an existing card
+    const created = await createTask({
+      title: "too long via tool",
+      origin: { type: OriginType.Manual },
+    });
+
+    // When the agent records a decision past the limit, Then it reaches the
+    // agent as a readable validation error naming the length — the whole point
+    // of rejecting is that the agent can rewrite it, not retry it unchanged
+    const result = await createAppendDecision()({
+      id: created.id,
+      decision: "x".repeat(201),
+    });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      code: ErrorCode.Validation,
+      message: expect.stringMatching(/\b201\b.*\b200\b/),
     });
   });
 
@@ -346,9 +580,14 @@ describe("mark_decision_outdated handler", () => {
       index: 0,
     });
 
-    // Then the marked card comes back as success structured content
+    // Then the tool succeeds and the decision now reads as outdated on the
+    // card — read back, because a write acknowledges rather than echoing
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).toMatchObject({
+    const context = await createGetCardContext()({
+      id: created.id,
+      view: CardView.Full,
+    });
+    expect(context.structuredContent).toMatchObject({
       id: created.id,
       decisions: [{ status: "outdated" }],
     });
@@ -385,9 +624,14 @@ describe("update_card handler", () => {
       title: "after edit",
     });
 
-    // Then the edit persists as success structured content
+    // Then the edit persists — read back, because a write acknowledges rather
+    // than echoing the card
     expect(result.isError).toBeUndefined();
-    expect(result.structuredContent).toMatchObject({
+    const context = await createGetCardContext()({
+      id: created.id,
+      view: CardView.Full,
+    });
+    expect(context.structuredContent).toMatchObject({
       id: created.id,
       title: "after edit",
     });

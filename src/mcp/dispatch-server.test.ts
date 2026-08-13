@@ -89,6 +89,24 @@ describe("createDispatchMcpServer", () => {
     await client.close();
   });
 
+  it("rejects an unknown get_card_context view before any handler runs", async () => {
+    // Given a connected client
+    const client = await connectClient();
+
+    // When it asks for a view the tool does not offer, Then the SDK's schema
+    // boundary refuses the call — which is only possible if `view` is actually
+    // registered on the tool, not merely accepted by the handler signature
+    const result = await client.callTool({
+      name: "get_card_context",
+      arguments: { id: new ObjectId().toHexString(), view: "everything" },
+    });
+    expect(result.isError).toBe(true);
+    const [first] = result.content as { type: string; text: string }[];
+    expect(first.text).toContain("Input validation error");
+
+    await client.close();
+  });
+
   it("cues an agent when to record a decision vs a routine progress note, and that get_card_context returns the decision log", async () => {
     // Given the generic dispatch server, When a client connects and lists tools
     const client = await connectClient();

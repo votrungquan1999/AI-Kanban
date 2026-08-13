@@ -15,13 +15,17 @@ import {
   updateTaskStatus,
 } from "@/cards/card.service";
 import type { RepoEntry, Status } from "@/cards/card.type";
+import { CardView } from "@/cards/card.type";
 import { setWorkspace } from "@/cards/card.workspace.service";
 import { AppError } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import {
   appErrorToToolResult,
+  toCardAckResult,
+  toCardDecisionsResult,
   toCardListResult,
   toCardResult,
+  toCardResumeResult,
   toRecurringListResult,
   toRecurringResult,
   toRecurringRunListResult,
@@ -68,7 +72,7 @@ export function createClaimCard(): (args: {
       if (!card) {
         return claimUnavailableResult(id);
       }
-      return toCardResult(card);
+      return toCardAckResult(card);
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -97,7 +101,7 @@ export function createCreateCard(): (args: {
 }) => Promise<CallToolResult> {
   return async (args) => {
     try {
-      return toCardResult(await createCard(args));
+      return toCardAckResult(await createCard(args));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -154,7 +158,7 @@ export function createUpdateCard(): (
   return async ({ id, ...patch }) => {
     try {
       const card = await updateTask(id, patch, { caller: Caller.Agent });
-      return toCardResult(card);
+      return toCardAckResult(card);
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -177,7 +181,7 @@ export function createAppendProgress(): (args: {
 }) => Promise<CallToolResult> {
   return async ({ id, note }) => {
     try {
-      return toCardResult(await appendProgress(id, note));
+      return toCardAckResult(await appendProgress(id, note));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -202,7 +206,7 @@ export function createAppendDecision(): (args: {
 }) => Promise<CallToolResult> {
   return async ({ id, decision, why }) => {
     try {
-      return toCardResult(await appendDecision(id, decision, why));
+      return toCardAckResult(await appendDecision(id, decision, why));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -227,7 +231,7 @@ export function createMarkDecisionOutdated(): (args: {
 }) => Promise<CallToolResult> {
   return async ({ id, index, supersededByIndex }) => {
     try {
-      return toCardResult(
+      return toCardAckResult(
         await markDecisionOutdated(id, index, supersededByIndex),
       );
     } catch (error) {
@@ -247,10 +251,19 @@ export function createMarkDecisionOutdated(): (args: {
  */
 export function createGetCardContext(): (args: {
   id: string;
+  view?: CardView;
 }) => Promise<CallToolResult> {
-  return async ({ id }) => {
+  return async ({ id, view }) => {
     try {
-      return toCardResult(await getTask(id));
+      const card = await getTask(id);
+      switch (view) {
+        case CardView.Full:
+          return toCardResult(card);
+        case CardView.Decisions:
+          return toCardDecisionsResult(card);
+        default:
+          return toCardResumeResult(card);
+      }
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -278,7 +291,7 @@ export function createSetStatus(): (args: {
         caller: Caller.Agent,
         force,
       });
-      return toCardResult(card);
+      return toCardAckResult(card);
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -303,7 +316,7 @@ export function createAdoptCard(): (args: {
 }) => Promise<CallToolResult> {
   return async ({ id, sessionId }) => {
     try {
-      return toCardResult(await adoptCard(id, sessionId));
+      return toCardAckResult(await adoptCard(id, sessionId));
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
@@ -328,7 +341,7 @@ export function createSetWorkspace(): (args: {
   return async ({ id, workspacePath, repos }) => {
     try {
       const card = await setWorkspace(id, { workspacePath, repos });
-      return toCardResult(card);
+      return toCardAckResult(card);
     } catch (error) {
       if (error instanceof AppError) {
         return appErrorToToolResult(error);
