@@ -195,3 +195,28 @@ describe("progress on a staled card whose revive collides", () => {
     expect(stored.status).toBe(Status.Staled);
   });
 });
+
+describe("a conversation's staled card after it opened another card", () => {
+  useTestMongo();
+  clearCollectionsEachTest();
+
+  it("comes back to in progress on new progress, leaving the newer card alone", async () => {
+    // Given a conversation whose first card went stale
+    const firstId = await createStaledCard("First task");
+
+    // And that later opened a second card for new work
+    const second = await createCard({
+      title: "Second task",
+      tags: [],
+      sessionId: "session-1",
+      forceNew: true,
+    });
+
+    // When progress is noted on the first card
+    await appendProgress(firstId, "back on it");
+
+    // Then the first card is active again and the second is untouched
+    expect((await getTask(firstId)).status).toBe(Status.InProgress);
+    expect((await getTask(second.id)).status).toBe(Status.InProgress);
+  });
+});

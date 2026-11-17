@@ -37,7 +37,7 @@ const TEXT_INDEX_NAME = "title_text_description_text";
 const DEDUPE_INDEX_NAME = "dedupeKey_1";
 
 /** The dedupeKey the seeded colliding pair both carry. */
-const DUPLICATED_KEY = "session:session-collides";
+const DUPLICATED_KEY = "notion:page-collides";
 
 describe("claim_card handler", () => {
   useTestMongo();
@@ -333,7 +333,7 @@ describe("set_status handler", () => {
       status: Status.Done,
       priority: 0,
       origin: { type: OriginType.Manual },
-      dedupeKey: "session:tool-collide",
+      dedupeKey: "notion:tool-collide",
       runState: RunState.Idle,
       process: null,
       attempts: 0,
@@ -354,7 +354,7 @@ describe("set_status handler", () => {
       status: Status.InProgress,
       priority: 0,
       origin: { type: OriginType.Manual },
-      dedupeKey: "session:tool-collide",
+      dedupeKey: "notion:tool-collide",
       runState: RunState.Idle,
       process: null,
       attempts: 0,

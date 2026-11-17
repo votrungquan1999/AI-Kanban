@@ -140,7 +140,7 @@ export function registerDispatchTools(server: McpServer): void {
     "set_status",
     {
       description:
-        "Move a card to any status by id — the agent has full any-to-any parity with a person on the webview. Pass force:true only if the move is refused with ERR_DUPLICATE — it displaces the card currently holding the session's dedupeKey slot; confirm with the user before using it.",
+        "Move a card to any status by id — the agent has full any-to-any parity with a person on the webview. Pass force:true only if the move is refused with ERR_DUPLICATE — it displaces the open card holding the same import dedupeKey; confirm with the user before using it.",
       inputSchema: {
         id: cardIdSchema,
         status: statusSchema,

@@ -1405,23 +1405,23 @@ function makeCard(overrides: Partial<CardDocument> = {}): CardDocument {
 describe("updateTaskStatus dedupeKey collision", () => {
   useTestMongo();
 
-  it("refuses reviving a stale card into a slot its session's open card already holds (D13)", async () => {
-    // Given a session's terminal card (done) that still carries its session
-    // dedupeKey, and the SAME session's live open card (in_progress) holding
-    // that same key — both can coexist because `done` sits outside
+  it("refuses reviving a stale card into a slot an open card already holds (D13)", async () => {
+    // Given an imported card that is done but still carries its import
+    // dedupeKey, and a live open card (in_progress) re-imported under that
+    // same key — both can coexist because `done` sits outside
     // OPEN_STATUSES, so the partial-unique index doesn't see a collision yet
     const db = await getDb();
     await bootstrapIndexes(db);
     const staleDone = makeCard({
       number: 1,
       status: Status.Done,
-      dedupeKey: "session:collide",
+      dedupeKey: "notion:collide",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 2,
       status: Status.InProgress,
-      dedupeKey: "session:collide",
+      dedupeKey: "notion:collide",
     });
     await cardsCollection(db).insertMany([staleDone, liveOpen]);
 
@@ -1435,20 +1435,20 @@ describe("updateTaskStatus dedupeKey collision", () => {
   });
 
   it("with force, displaces the current open holder and the revived card takes over the identity (D13)", async () => {
-    // Given the same colliding pair: a stale done card and the session's live
-    // open card sharing one dedupeKey
+    // Given the same colliding pair: a stale done card and a live open card
+    // sharing one import dedupeKey
     const db = await getDb();
     await bootstrapIndexes(db);
     const staleDone = makeCard({
       number: 3,
       status: Status.Done,
-      dedupeKey: "session:collide-force",
+      dedupeKey: "notion:collide-force",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 4,
       status: Status.InProgress,
-      dedupeKey: "session:collide-force",
+      dedupeKey: "notion:collide-force",
     });
     await cardsCollection(db).insertMany([staleDone, liveOpen]);
 
@@ -1464,7 +1464,7 @@ describe("updateTaskStatus dedupeKey collision", () => {
     const revivedDoc = await cardsCollection(db).findOne({
       _id: staleDone._id,
     });
-    expect(revivedDoc?.dedupeKey).toBe("session:collide-force");
+    expect(revivedDoc?.dedupeKey).toBe("notion:collide-force");
 
     // And the previously-open holder is displaced (dedupeKey cleared)
     const displacedDoc = await cardsCollection(db).findOne({
@@ -1475,7 +1475,7 @@ describe("updateTaskStatus dedupeKey collision", () => {
     // And exactly one open card now carries the key — no lingering duplicate
     const openHolders = await cardsCollection(db)
       .find({
-        dedupeKey: "session:collide-force",
+        dedupeKey: "notion:collide-force",
         status: { $in: [Status.Todo, Status.InProgress, Status.NeedReview] },
       })
       .toArray();
@@ -1490,13 +1490,13 @@ describe("updateTaskStatus dedupeKey collision", () => {
     const staleDone = makeCard({
       number: 5,
       status: Status.Done,
-      dedupeKey: "session:collide-audit",
+      dedupeKey: "notion:collide-audit",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 6,
       status: Status.InProgress,
-      dedupeKey: "session:collide-audit",
+      dedupeKey: "notion:collide-audit",
     });
     await cardsCollection(db).insertMany([staleDone, liveOpen]);
 
@@ -1531,13 +1531,13 @@ describe("updateTaskStatus dedupeKey collision", () => {
     const staleDone = makeCard({
       number: 7,
       status: Status.Done,
-      dedupeKey: "session:collide-force-audit",
+      dedupeKey: "notion:collide-force-audit",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 8,
       status: Status.InProgress,
-      dedupeKey: "session:collide-force-audit",
+      dedupeKey: "notion:collide-force-audit",
     });
     await cardsCollection(db).insertMany([staleDone, liveOpen]);
 
@@ -1571,13 +1571,13 @@ describe("updateTaskStatus dedupeKey collision", () => {
     const staleDone = makeCard({
       number: 13,
       status: Status.Done,
-      dedupeKey: "session:collide-force-ui",
+      dedupeKey: "notion:collide-force-ui",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 14,
       status: Status.InProgress,
-      dedupeKey: "session:collide-force-ui",
+      dedupeKey: "notion:collide-force-ui",
     });
     await cardsCollection(db).insertMany([staleDone, liveOpen]);
 
@@ -1610,13 +1610,13 @@ describe("updateTaskStatus dedupeKey collision", () => {
     const staleDone = makeCard({
       number: 9,
       status: Status.Done,
-      dedupeKey: "session:retry-rollback",
+      dedupeKey: "notion:retry-rollback",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 10,
       status: Status.InProgress,
-      dedupeKey: "session:retry-rollback",
+      dedupeKey: "notion:retry-rollback",
     });
     // Corrupt the mover so the retry's returned image fails cardDocumentSchema.
     const corruptStale = { ...staleDone, priority: "not-a-number" };
@@ -1636,7 +1636,7 @@ describe("updateTaskStatus dedupeKey collision", () => {
     // Then the transaction rolled back: the holder still owns its dedupeKey and
     // the mover never left Done — the one-live-card invariant is intact.
     const holderDoc = await cardsCollection(db).findOne({ _id: liveOpen._id });
-    expect(holderDoc?.dedupeKey).toBe("session:retry-rollback");
+    expect(holderDoc?.dedupeKey).toBe("notion:retry-rollback");
     const moverDoc = await cardsCollection(db).findOne({ _id: staleDone._id });
     expect(moverDoc?.status).toBe(Status.Done);
   });
@@ -1650,13 +1650,13 @@ describe("updateTaskStatus dedupeKey collision", () => {
     const staleDone = makeCard({
       number: 11,
       status: Status.Done,
-      dedupeKey: "session:retry-dup",
+      dedupeKey: "notion:retry-dup",
       finishedAt: new Date(),
     });
     const liveOpen = makeCard({
       number: 12,
       status: Status.InProgress,
-      dedupeKey: "session:retry-dup",
+      dedupeKey: "notion:retry-dup",
     });
     await cardsCollection(db).insertMany([staleDone, liveOpen]);
 
@@ -1692,6 +1692,6 @@ describe("updateTaskStatus dedupeKey collision", () => {
 
     // The aborted transaction restores the displaced holder's dedupeKey.
     const holderDoc = await cardsCollection(db).findOne({ _id: liveOpen._id });
-    expect(holderDoc?.dedupeKey).toBe("session:retry-dup");
+    expect(holderDoc?.dedupeKey).toBe("notion:retry-dup");
   });
 });

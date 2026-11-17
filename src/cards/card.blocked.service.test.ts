@@ -2,6 +2,7 @@ import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { reconcileBlockedCards } from "@/cards/card.blocked.service";
 import {
+  createCard,
   createTask,
   getTask,
   listCards,
@@ -193,5 +194,35 @@ describe("board reads when an overdue card's move collides", () => {
     );
     expect((await getTask(parked.id)).status).toBe(Status.Blocked);
     expect((await getTask(other.id)).status).toBe(Status.NeedReview);
+  });
+});
+
+describe("a conversation's blocked card after it opened another card", () => {
+  useTestMongo();
+
+  it("moves to review when its block runs out, leaving the newer card alone", async () => {
+    // Given a conversation whose first card is blocked
+    const first = await createCard({
+      title: "First task",
+      tags: [],
+      sessionId: "session-outage",
+    });
+    await updateTaskStatus(first.id, Status.Blocked);
+
+    // And that later opened a second card for new work
+    const second = await createCard({
+      title: "Second task",
+      tags: [],
+      sessionId: "session-outage",
+      forceNew: true,
+    });
+
+    // When the first card's block runs out and the board is read
+    await expireBlockedCard(first.id);
+    await listCards();
+
+    // Then the first card is waiting for review and the second is still active
+    expect((await getTask(first.id)).status).toBe(Status.NeedReview);
+    expect((await getTask(second.id)).status).toBe(Status.InProgress);
   });
 });
