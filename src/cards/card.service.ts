@@ -182,7 +182,7 @@ export function sessionDedupeKey(sessionId: string, version: number): string {
  * rather than duplicating. `done`/`archived` are terminal (never adopted); a
  * session card never sits in `todo`.
  */
-const ADOPTABLE_SESSION_STATUSES = [
+export const ADOPTABLE_SESSION_STATUSES = [
   Status.InProgress,
   Status.NeedReview,
   Status.Staled,

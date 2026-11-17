@@ -55,7 +55,7 @@ describe("adoptCard", () => {
     });
 
     // And prior work that is already done — the common case this feature
-    // exists to find, and the one the partial-unique index cannot police
+    // exists to find
     const finished = await createCard({
       title: "prior work, long since finished",
       tags: [],
@@ -64,18 +64,18 @@ describe("adoptCard", () => {
     await updateTaskStatus(finished.id, Status.Done, { caller: Caller.Agent });
 
     // When the busy session tries to take that finished card over
-    // Then it is refused, instead of quietly ending up with two cards under
-    // one dedupe key and a finished card that can never be reopened
+    // Then it is refused: the session's next create_card would hand back its
+    // own card, not the one it just took over
     await expect(adoptCard(finished.id, "session-busy")).rejects.toMatchObject({
       code: ErrorCode.Duplicate,
     });
 
-    // And the card is untouched — no half-applied re-stamp
+    // And the card is untouched — ownership did not move
     const untouched = await getTask(finished.id);
     expect(untouched.sessionId).toBe("session-old");
   });
 
-  it("reports a re-stamp that would collide with the session's own live card, rather than dropping it", async () => {
+  it("refuses to take over a parked card while the session is working its own open card", async () => {
     // Given a session already working its own open card
     await createCard({
       title: "what this session is already doing",
@@ -94,12 +94,42 @@ describe("adoptCard", () => {
     });
 
     // When the busy session tries to adopt that card too
-    // Then it is told, rather than the re-stamp vanishing silently
+    // Then it is told to resolve its own card first
     await expect(adoptCard(other.id, "session-busy")).rejects.toMatchObject({
       code: ErrorCode.Duplicate,
     });
 
     // And the card it failed to adopt still belongs to its original session
+    const untouched = await getTask(other.id);
+    expect(untouched.sessionId).toBe("session-other");
+  });
+
+  it("refuses a take-over while the session's own card is parked in Blocked", async () => {
+    // Given a session whose own card is blocked, waiting on something
+    const own = await createCard({
+      title: "what this session was doing",
+      tags: [],
+      sessionId: "session-parked",
+    });
+    await updateTaskStatus(own.id, Status.Blocked, { caller: Caller.Agent });
+
+    // And another session's card, parked for review
+    const other = await createCard({
+      title: "somebody else's parked work",
+      tags: [],
+      sessionId: "session-other",
+    });
+    await updateTaskStatus(other.id, Status.NeedReview, {
+      caller: Caller.Agent,
+    });
+
+    // When the parked session tries to take that card over
+    // Then it is refused until it deals with its own unfinished card
+    await expect(adoptCard(other.id, "session-parked")).rejects.toMatchObject({
+      code: ErrorCode.Duplicate,
+    });
+
+    // And the card still belongs to its original session
     const untouched = await getTask(other.id);
     expect(untouched.sessionId).toBe("session-other");
   });
