@@ -47,4 +47,4 @@ The `session:` key never did anything the `sessionId` lookup didn't already do. 
 
 ## Data
 
-Cards created before this change may still carry `session:` keys. They are cleared once, after deploy, with `updateMany({ dedupeKey: /^session:/ }, { $set: { dedupeKey: null } })`.
+Cards created before this change carried `session:` keys. All 299 were cleared on 2026-11-17, after deploy, with `updateMany({ dedupeKey: /^session:/ }, { $set: { dedupeKey: null } })`. No card used an import key at the time.
