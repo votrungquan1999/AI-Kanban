@@ -30,6 +30,7 @@ import { nextNumber } from "@/cards/counters";
 import { AppError, ErrorCode } from "@/cards/errors";
 import { Caller, legalFromStatuses } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
+import { isDuplicateKeyError } from "@/db/duplicate-key";
 import {
   findManyProjectedZ,
   findManyZ,
@@ -77,15 +78,6 @@ interface UpdateStatusOptions {
    * instead of throwing {@link ErrorCode.Duplicate} (D13).
    */
   force?: boolean;
-}
-
-/** True if the error is a MongoDB duplicate-key (E11000) error. */
-export function isDuplicateKeyError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: number }).code === 11000
-  );
 }
 
 /** Converts parsed client origin (hex ids) into a stored origin (ObjectId). */

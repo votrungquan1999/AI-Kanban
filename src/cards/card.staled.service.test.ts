@@ -1,11 +1,17 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
-import { createCard, getTask } from "@/cards/card.service";
+import { appendProgress } from "@/cards/card.progress.service";
+import {
+  createCard,
+  createTask,
+  getTask,
+  updateTaskStatus,
+} from "@/cards/card.service";
 import {
   reconcileStaledCards,
   reviveStaledCard,
 } from "@/cards/card.staled.service";
-import { Status } from "@/cards/card.type";
+import { OriginType, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind } from "@/cards/card-event.type";
 import { Caller } from "@/cards/transition-policy";
@@ -155,5 +161,37 @@ describe("reconcileStaledCards", () => {
         event.to === Status.Staled,
     );
     expect(staleMoves).toHaveLength(1);
+  });
+});
+
+describe("progress on a staled card whose revive collides", () => {
+  useTestMongo();
+  clearCollectionsEachTest();
+
+  it("saves the note without an error and leaves the card staled", async () => {
+    // Given a staled card that gave up its import key while parked, and an
+    // open card that took the key, so reviving it collides
+    const parked = await createTask({
+      title: "Parked import",
+      origin: { type: OriginType.Manual },
+      dedupeKey: "notion:collide",
+    });
+    await updateTaskStatus(parked.id, Status.InProgress);
+    await makeCardStale(parked.id);
+    await reconcileStaledCards();
+    await createTask({
+      title: "Re-imported while parked",
+      origin: { type: OriginType.Manual },
+      dedupeKey: "notion:collide",
+    });
+
+    // When an agent appends progress to the parked card
+    const result = await appendProgress(parked.id, "still digging");
+
+    // Then the note is saved and the card stays staled
+    expect(result.progress.map((p) => p.note)).toEqual(["still digging"]);
+    const stored = await getTask(parked.id);
+    expect(stored.progress.map((p) => p.note)).toEqual(["still digging"]);
+    expect(stored.status).toBe(Status.Staled);
   });
 });

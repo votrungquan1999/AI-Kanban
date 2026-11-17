@@ -1,9 +1,10 @@
 import { cardDocumentSchema } from "@/cards/card.document.schema";
-import { Status } from "@/cards/card.type";
+import { type CardDocument, Status } from "@/cards/card.type";
 import { emitCardEvent } from "@/cards/card-event.service";
 import { EventOutcome } from "@/cards/card-event.type";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
+import { isDuplicateKeyError } from "@/db/duplicate-key";
 import { findOneAndUpdateZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
 
@@ -17,7 +18,8 @@ import { getDb } from "@/db/mongo";
  * (`{_id, status: blocked, blockedUntil <= now}`) rather than via
  * `updateTaskStatus`, so two concurrent board reads cannot double-move or
  * double-audit the same card: the second update matches nothing. Every actual
- * move is audited as a {@link Caller.System} status transition.
+ * move is audited as a {@link Caller.System} status transition. A card whose
+ * move collides on `dedupeKey` is skipped and logged, never failing the read.
  */
 export async function reconcileBlockedCards(): Promise<void> {
   const db = await getDb();
@@ -32,21 +34,32 @@ export async function reconcileBlockedCards(): Promise<void> {
     .toArray();
 
   for (const card of overdue) {
-    const moved = await findOneAndUpdateZ(
-      cards,
-      { _id: card._id, status: Status.Blocked, blockedUntil: { $lte: now } },
-      [
-        {
-          $set: {
-            status: Status.NeedReview,
-            updatedAt: "$$NOW",
-            blockedUntil: null,
+    let moved: CardDocument | null;
+    try {
+      moved = await findOneAndUpdateZ(
+        cards,
+        { _id: card._id, status: Status.Blocked, blockedUntil: { $lte: now } },
+        [
+          {
+            $set: {
+              status: Status.NeedReview,
+              updatedAt: "$$NOW",
+              blockedUntil: null,
+            },
           },
-        },
-      ],
-      cardDocumentSchema,
-      { returnDocument: "after" },
-    );
+        ],
+        cardDocumentSchema,
+        { returnDocument: "after" },
+      );
+    } catch (error) {
+      // An open card took this one's dedupeKey while it was blocked. Leave it
+      // blocked rather than fail the board read for every caller.
+      if (!isDuplicateKeyError(error)) throw error;
+      console.error(
+        `Blocked card #${card.number} can't move to review: its dedupeKey is held by an open card`,
+      );
+      continue;
+    }
 
     // Null means a concurrent reconcile already moved this card — skip the
     // audit so the move is recorded exactly once.

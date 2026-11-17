@@ -1,17 +1,14 @@
 import { ObjectId } from "mongodb";
 import { cardDocumentSchema } from "@/cards/card.document.schema";
 import { toClientCard } from "@/cards/card.mapper";
-import {
-  isDuplicateKeyError,
-  SESSION_KEY_PREFIX,
-  sessionDedupeKey,
-} from "@/cards/card.service";
+import { SESSION_KEY_PREFIX, sessionDedupeKey } from "@/cards/card.service";
 import { type Card, type CardDocument, Status } from "@/cards/card.type";
 import { emitFieldEditEvent } from "@/cards/card-event.service";
 import { EditableField } from "@/cards/card-event.type";
 import { AppError, ErrorCode } from "@/cards/errors";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
+import { isDuplicateKeyError } from "@/db/duplicate-key";
 import { findOneAndUpdateZ, findOneZ } from "@/db/find-z";
 import { OPEN_STATUSES } from "@/db/indexes";
 import { getDb } from "@/db/mongo";

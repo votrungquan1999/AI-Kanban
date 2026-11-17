@@ -5,6 +5,7 @@ import { emitCardEvent } from "@/cards/card-event.service";
 import { EventOutcome } from "@/cards/card-event.type";
 import { Caller } from "@/cards/transition-policy";
 import { cardsCollection } from "@/db/collections";
+import { isDuplicateKeyError } from "@/db/duplicate-key";
 import { findOneAndUpdateZ } from "@/db/find-z";
 import { getDb } from "@/db/mongo";
 
@@ -73,10 +74,12 @@ export async function reconcileStaledCards(): Promise<void> {
  *
  * The flip is one atomic conditional update (`{_id, status: staled}`), so it is
  * a no-op when the card is not staled (returns null) and cannot race a
- * concurrent reconcile into a double-move. Every actual revive is audited as a
- * {@link Caller.System} Staled -> InProgress transition, mirroring the park.
+ * concurrent reconcile into a double-move. A revive that collides on
+ * `dedupeKey` is skipped and logged (returns null) so the content write
+ * stands. Every actual revive is audited as a {@link Caller.System}
+ * Staled -> InProgress transition, mirroring the park.
  * @param cardId - The card's id.
- * @returns The revived card document, or null when the card was not staled.
+ * @returns The revived card document, or null when the card was not revived.
  */
 export async function reviveStaledCard(
   cardId: ObjectId,
@@ -84,13 +87,24 @@ export async function reviveStaledCard(
   const db = await getDb();
   const cards = cardsCollection(db);
 
-  const moved = await findOneAndUpdateZ(
-    cards,
-    { _id: cardId, status: Status.Staled },
-    [{ $set: { status: Status.InProgress, updatedAt: "$$NOW" } }],
-    cardDocumentSchema,
-    { returnDocument: "after" },
-  );
+  let moved: CardDocument | null;
+  try {
+    moved = await findOneAndUpdateZ(
+      cards,
+      { _id: cardId, status: Status.Staled },
+      [{ $set: { status: Status.InProgress, updatedAt: "$$NOW" } }],
+      cardDocumentSchema,
+      { returnDocument: "after" },
+    );
+  } catch (error) {
+    // An open card took this one's dedupeKey while it was parked. The caller's
+    // content write already landed, so leave the card staled, not failed.
+    if (!isDuplicateKeyError(error)) throw error;
+    console.error(
+      `Staled card ${cardId.toHexString()} can't revive: its dedupeKey is held by an open card`,
+    );
+    return null;
+  }
 
   // Null means the card was not staled (or a concurrent op already moved it) —
   // nothing to revive and nothing to audit.

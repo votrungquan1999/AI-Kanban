@@ -1,7 +1,12 @@
 import { ObjectId } from "mongodb";
 import { describe, expect, it } from "vitest";
 import { reconcileBlockedCards } from "@/cards/card.blocked.service";
-import { createTask, getTask, updateTaskStatus } from "@/cards/card.service";
+import {
+  createTask,
+  getTask,
+  listCards,
+  updateTaskStatus,
+} from "@/cards/card.service";
 import { OriginType, Status } from "@/cards/card.type";
 import { listCardEvents } from "@/cards/card-event.service";
 import { CardEventKind } from "@/cards/card-event.type";
@@ -147,5 +152,46 @@ describe("reconcileBlockedCards", () => {
         event.to === Status.NeedReview,
     );
     expect(systemMoves).toHaveLength(1);
+  });
+});
+
+// Own describe + own useTestMongo(): seeds a deliberate dedupeKey collision.
+describe("board reads when an overdue card's move collides", () => {
+  useTestMongo();
+
+  it("still lists the board and moves the other overdue cards", async () => {
+    // Given a blocked card that gave up its import key while blocked, and an
+    // open card that took the key, so moving it back to review collides
+    const parked = await createTask({
+      title: "Parked import",
+      origin: { type: OriginType.Manual },
+      dedupeKey: "notion:collide",
+    });
+    await updateTaskStatus(parked.id, Status.Blocked);
+    await createTask({
+      title: "Re-imported while parked",
+      origin: { type: OriginType.Manual },
+      dedupeKey: "notion:collide",
+    });
+    await expireBlockedCard(parked.id);
+
+    // And an unrelated overdue blocked card
+    const other = await createTask({
+      title: "Unrelated overdue block",
+      origin: { type: OriginType.Manual },
+    });
+    await updateTaskStatus(other.id, Status.Blocked);
+    await expireBlockedCard(other.id);
+
+    // When any conversation reads the board
+    const listed = await listCards();
+
+    // Then the read succeeds, the colliding card stays blocked, and the
+    // unrelated card still moved to review
+    expect(listed.map((c) => c.id)).toEqual(
+      expect.arrayContaining([parked.id, other.id]),
+    );
+    expect((await getTask(parked.id)).status).toBe(Status.Blocked);
+    expect((await getTask(other.id)).status).toBe(Status.NeedReview);
   });
 });
