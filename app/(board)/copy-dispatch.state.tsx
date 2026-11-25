@@ -3,9 +3,9 @@
 import { useToast } from "@/components/ui/toast";
 
 /**
- * Generic clipboard-copy primitive used by the tile (dispatch command / id) and
- * the detail sheet (individual field values). Writes the given text to the
- * clipboard and, on success, shows a confirmation toast.
+ * Generic clipboard-copy primitive used by the detail sheet (individual field
+ * values). Writes the given text to the clipboard and, on success, shows a
+ * confirmation toast.
  * @returns A `copy(text, confirmation?)` action bound to the toast manager.
  */
 export function useCopyDispatch() {

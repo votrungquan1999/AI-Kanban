@@ -10,7 +10,6 @@ import {
   BlockDurationPicker,
   DEFAULT_BLOCK_INTERVAL_MS,
 } from "./block-duration-picker.ui";
-import { CopyDispatch } from "./copy-dispatch.ui";
 import { cardDetailHref } from "./href";
 
 /** Statuses from which a card may be sent to Blocked via the quick action. */
@@ -67,7 +66,6 @@ export function CardTile({
           #{card.number}
         </Link>
         <div className="grid grid-flow-col items-center gap-1">
-          <CopyDispatch cardId={card.id} />
           <span className="rounded bg-muted px-1.5 py-0.5 font-medium">
             P{card.priority}
           </span>

@@ -229,9 +229,8 @@ export function registerDispatchTools(server: McpServer): void {
  * Builds the generic dispatch MCP server. Unlike the card-scoped
  * {@link createMcpServer}, it carries no session identity: it constructs the
  * server and delegates tool registration to {@link registerDispatchTools},
- * exposing exactly fifteen tools so any pre-started session can act on any card
- * (under the `/ai-kanban-work-card` skill's direction) or process the recurring
- * queue.
+ * exposing exactly fifteen tools so any session can act on any card or process
+ * the recurring queue.
  * @returns A configured {@link McpServer} ready to connect to a transport.
  */
 export function createDispatchMcpServer(): McpServer {
