@@ -1,6 +1,6 @@
 ---
 name: structured-brainstorming
-description: Facilitates structured brainstorming using zoom-out-first approach with clarifying questions and iterative thinking. Use when brainstorming solutions, designing systems, exploring approaches, or when user says "help me think through", "design this", "brainstorm", or "explore options".
+description: Facilitates structured brainstorming using zoom-out-first approach, research-first ideas and iterative thinking. Use when brainstorming solutions, designing systems, exploring approaches, or when user says "help me think through", "design this", "brainstorm", or "explore options".
 ---
 
 # Structured Brainstorming
@@ -10,7 +10,7 @@ This Skill provides a structured approach to brainstorming and problem-solving u
 ## Core Methodology
 
 1. **Problem Definition** - Clearly state the problem at the top
-2. **Clarification** - Ask questions before generating ideas
+2. **Research First** - Gather ideas with sources and lead the reply with them; no opening question rounds
 3. **Zoom Out First** - Start with the widest view, then progressively zoom in
 4. **Iterate** - Generate multiple alternatives, refine, and build upon ideas
 5. **Document Everything** - Write to .md files for context preservation
@@ -22,7 +22,7 @@ This Skill provides a structured approach to brainstorming and problem-solving u
 **Before creating any brainstorming document**, establish where artifacts go:
 
 - **If a caller gave you a working directory** (e.g. `<ws>` = `./tmp/<identifier>/`), use it.
-- **Otherwise**, ask the user for a **task identifier** — a ticket id (e.g. `JIRA-123`) or any short label. If they have none, **derive a short kebab-case slug** from the topic and **confirm it**. Then use `<ws>` = `./tmp/<identifier>/` and create that directory.
+- **Otherwise**, derive a **task identifier** — a ticket id from the request or branch (e.g. `JIRA-123`), else a short kebab-case slug from the topic — and state it in one line. Then use `<ws>` = `./tmp/<identifier>/` and create that directory.
 
 Throughout this skill, `<ws>` refers to that working directory. Scoping brainstorm docs under `./tmp/<identifier>/` lets multiple brainstorms run in parallel without colliding.
 
@@ -48,22 +48,14 @@ Throughout this skill, `<ws>` refers to that working directory. Scoping brainsto
 
 ---
 
-## Phase 2: Clarification Through Questions
+## Phase 2: Research First, Ideas First
 
-**MUST ask clarifying questions before generating ideas**
+**Gather ideas before asking anything.** Search the web, talks and podcast transcripts, tools and studies, and collect concrete ideas with their sources.
 
-Questions to cover:
-- **Scope**: What's in scope? What's out of scope?
-- **Constraints**: Technical, time, resource, budget limitations?
-- **Goals**: What defines success? What are we optimizing for?
-- **Success Criteria**: How will we measure success?
-- **Context**: What's the current situation? What led to this?
-- **Stakeholders**: Who's affected? Who needs to approve?
-
-**Important:**
-- Continue asking until the problem is well-defined
-- User can defer some questions to leave room for exploration
-- Document all questions and answers in the brainstorming document
+- **The reply opens with the ideas**: a short numbered list, one line each, with a source per idea. No framing paragraph, stats or "why it's worth building" before the list; supporting evidence goes after it or in the document.
+- **Then your recommendation.**
+- **Ask at most one question**, and only when the topic itself is ambiguous enough that research would go the wrong way; restate your reading in one line instead when you can.
+- Note open scope, constraint or success questions in the brainstorming document as assumptions for the user to correct, rather than holding the ideas back for them.
 
 ---
 
@@ -109,9 +101,8 @@ Questions to cover:
 ### At Each Layer:
 - Generate at least 2-3 alternatives
 - Document the reasoning for each
-- Identify which alternative to pursue
-- Note why other alternatives were rejected
-- Keep rejected alternatives for future reference
+- Write up the alternatives for the owner; the owner picks which to pursue — you may recommend, but do not pick
+- Once the owner picks, delete the rejected alternatives and keep a one-line Decision Log entry for each (what was rejected and why)
 
 ---
 
@@ -150,8 +141,11 @@ Current situation, background, what led here
 ### Alternative 2: [Approach Name]
 ...
 
-### Decision: Go with Alternative 1
+### Decision (owner's pick): Alternative 1
 **Reasoning:** ...
+
+## Decision Log
+- Rejected Alternative 2: [one-line reason]
 
 ## Zoom Level 2: [One Level Deeper]
 [Breaking down Alternative 1]
@@ -179,17 +173,29 @@ When helpful, use:
 - Lists for alternatives
 - Hierarchies for system structure
 - Flow diagrams for processes
-- Tables for comparisons
+- One bullet list per alternative for comparisons
 
 ### Examples
 ```markdown
 ## Authentication Alternatives Comparison
 
-| Alternative | Security | Complexity | Cost | Time |
-|-------------|----------|------------|------|------|
-| OAuth 2.0   | High     | High       | Low  | 3w   |
-| JWT Only    | Medium   | Low        | Low  | 1w   |
-| Sessions    | High     | Medium     | Low  | 2w   |
+**OAuth 2.0**
+- Security: high
+- Complexity: high
+- Cost: low
+- Time: 3w
+
+**JWT only**
+- Security: medium
+- Complexity: low
+- Cost: low
+- Time: 1w
+
+**Sessions**
+- Security: high
+- Complexity: medium
+- Cost: low
+- Time: 2w
 ```
 
 ---
@@ -220,10 +226,10 @@ When helpful, use:
 
 ## Summary Workflow
 
-0. **Establish the task workspace** `<ws>` = `./tmp/<identifier>/` (ask for/confirm an identifier first)
+0. **Establish the task workspace** `<ws>` = `./tmp/<identifier>/` (derive an identifier and state it in one line)
 1. **Create brainstorming document** under `<ws>`
 2. **Define problem clearly** at the top
-3. **Ask clarifying questions** until problem is well-understood
+3. **Research and lead with ideas** - idea list with sources first, then a recommendation; one question only if the topic is ambiguous
 4. **Start zoomed out** - widest possible view
 5. **Generate alternatives** at current zoom level
 6. **Document tradeoffs, principles, priorities**

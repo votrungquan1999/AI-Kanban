@@ -66,11 +66,10 @@ The repo being committed is often not the current dir — you might be in `~/git
 ```markdown
 ## Commit Plan
 
-### Commit 1: feat(workflows): add workflows repository and infrastructure
+### Commit 1: feat(workflows): add workflows repository
 
 **Description**: 
-Implement workflows support infrastructure including repository layer, types, 
-and database collection.
+Implement workflows support infrastructure including repository layer, types, and database collection.
 
 **Files**:
 - src/server/types.ts

@@ -114,7 +114,8 @@ expect(result).toEqual({ status: "success", count: 5 });
 // ❌ Bad - not testing the right thing
 expect(apiCall).toHaveBeenCalled();
 
-// ✅ Good - verify the actual behavior
+// ✅ Better than toHaveBeenCalled - checks the arguments too
+// Use a call assertion only when the call to an outside system is itself the behavior (email, payment provider); otherwise assert the outcome
 expect(apiCall).toHaveBeenCalledWith({ userId: "123", action: "delete" });
 ```
 
@@ -139,8 +140,8 @@ expect(component.state.isLoading).toBe(false);
 // ✅ Good for E2E - testing user-visible behavior
 expect(screen.getByRole("button")).not.toBeDisabled();
 
-// ✅ Acceptable for unit tests - testing internal logic
-expect(internalHelper).toHaveBeenCalled(); // OK if testing unit behavior
+// ⚠️ Call assertion - only when the call to an outside system is itself the behavior (email, payment provider); otherwise assert the outcome
+expect(internalHelper).toHaveBeenCalled();
 
 // ❌ Bad - brittle selector tied to CSS classes
 const button = container.querySelector("div.css-1abc123 > button");

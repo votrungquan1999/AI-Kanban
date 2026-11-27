@@ -2,12 +2,21 @@
 name: repo-knowledge
 description: Generates comprehensive repository knowledge base documentation by analyzing codebase patterns, architecture, and flows. Use when onboarding to a repo, creating documentation, or when user says "analyze this repo", "create repo docs", "repo knowledge", or "document this codebase".
 allowed-tools: Read, Grep, Glob, Bash, Write, Agent
-context: fork
 ---
 
 # Repository Knowledge
 
 Creates a comprehensive knowledge base for a repository by analyzing the codebase and documenting meaningful patterns, architecture, and flows.
+
+## Execution — delegate to a Sonnet 5 sub-agent
+
+You run in the **main session** as a thin coordinator — do **not** perform the steps below yourself:
+
+1. Resolve **the target repo or sub-scope to document** (defaults to the current working directory) from the conversation.
+2. Spawn **one** sub-agent — `Agent` tool, `subagent_type: general-purpose`, `model: "sonnet"` (Sonnet 5). Pass it the resolved target and the steps below as its instructions. The repo is on disk in the shared working directory.
+3. It does all the analysis and file-writing and returns a short summary + the list of files it created. Relay those to the user; keep the codebase reads out of the main context.
+
+The steps below are the **sub-agent's** instructions.
 
 ## Repository Context
 

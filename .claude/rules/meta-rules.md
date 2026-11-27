@@ -12,24 +12,27 @@ For each task, Claude Code MUST double-check:
 3. If any rule conflicts exist, resolve them explicitly.
 
 - ALWAYS check all applicable rules before making any changes.
-- ALWAYS explain which rules were applied in the output.
 - MUST keep file size small and reasonable for AI context management.
-- NEVER require running/building the server to validate output.
-- NEVER run `npm run build` or `npm run dev` after completing tasks, the user will handle this.
+- NEVER make validating your work depend on the user starting the server — the proof is an automated test, not "run the dev server and look".
+- NEVER leave `npm run build` or `npm run dev` running after a task; the user owns their dev loop. Tests are the exception — see **Running Servers in Tests**.
 - ALWAYS use `npm install` to install packages. NEVER add packages directly to `package.json`.
 - AI MAY replace entire components or structures if it improves clarity/compliance.
-- For complex changes, AI MUST ask:
-  - "Am I correct?"
-  - "Which rules apply here?"
-  - "Did I miss any relevant rules?"
-- Apply the multi-shot method of prompt engineering: After editing around 5 files, should ask the user to review if the current direction is correct, then continue with the next 5 files. This iterative feedback approach helps ensure the AI stays aligned with user expectations and corrects course early if needed.
+
+## Running Servers in Tests
+
+The two no-server rules above are about the **user's** dev loop. They do not apply to the test harness: an automated test that boots the app is the intended way to validate a flow, and integration/e2e tests are expected to do exactly that.
+
+- **A test MAY start a server.** Standing the app up, driving it, and shutting it down inside a test run is not "running the dev server".
+- **Go through the project's own test command** (`npm run test:e2e` and friends), never a hand-rolled `npm run dev &` — the script owns env loading, ports, and teardown.
+- **Never watch mode** in an agent terminal; it hangs a non-interactive shell. Use the run-once form (`vitest run`, not `vitest`).
+- **Isolate from any dev server the user already has open** — own port, own build/output dir. Sharing either one deadlocks the run against their process.
+- **Tear down on every exit path**, failures included. A leaked server poisons the next run and holds the user's port.
+- **Capture the child process's output.** "Server failed to start" with stdio discarded says nothing; surface its stderr or you are debugging blind.
 
 ## Scope Management
 
 - NEVER implement unused/future features not explicitly requested by the user.
-- MUST ask 1-2 clarifying questions before implementing (or more if user explanation >100 characters).
 - Focus on what exists in the system currently, not what could be extended unless explicitly requested by the user.
-- When user provides long explanations (>100 characters), ask additional clarifying questions to verify scope and approach before proceeding.
 - Only extract reusable components/functions when the same logic is repeated at least **3 times**. Two occurrences do not justify extraction — wait for the third to ensure a good abstraction emerges.
 
 ## Error Handling
@@ -63,7 +66,7 @@ For each task, Claude Code MUST double-check:
 - The test-run GATE applies to BOTH modes: BDD scenarios (outer, behavior-level loop) and TDD (inner, unit/algorithm-level loop). BDD is also test-first — test-first never conflicts with BDD.
 - NEVER write behavior logic before running the test. Structural scaffolding (route, empty handler, field, empty function returning a default) MUST be in place before the run so the test can only fail behaviorally.
 - A red run only counts when a behavior assertion fails. Structural failures (404 route not registered, missing field/column/import) are NOT valid reds — they validate nothing. Never manufacture one to follow ritual.
-- If no meaningful red is possible (the minimal scaffolding to avoid structural failure already IS the implementation), write just enough code to pass first and expect green from the first run — state this explicitly.
+- If no meaningful red is possible (the minimal scaffolding to avoid structural failure already IS the implementation), write the test only if it checks something that could break later; otherwise skip the test and say why.
 - ONE at a time: one scenario (BDD) or one test (TDD). Run it. See the result. Then decide what comes next.
 - The test run is a GATE — skipping it is a rule violation in either mode.
 
@@ -71,3 +74,15 @@ For each task, Claude Code MUST double-check:
 
 - When the user requests changes to an already-generated plan `.md`, modify that plan file in place to reflect the requested changes — keep one source-of-truth plan file rather than creating a new file per revision.
 - Revise only the sections the request affects; preserve the rest of the plan's structure.
+
+## Evidence Labels on Claims
+
+Every factual claim in an answer, report, summary, review finding or decision request says where it comes from, in plain words right after the claim:
+
+- **Checked** — you ran it or read the primary source in this session; name the source, e.g. "(checked: git log)".
+- **Checked twice** — confirmed by two independent sources or two runs.
+- **Reported** — taken from a sub-agent, a card, a doc, memory or an earlier summary without re-checking, e.g. "(reported by a sub-agent, not re-checked)". Never present it as checked.
+- **Inferred** — reasoned from evidence, not observed directly; say what it is inferred from.
+- **Guess** — no direct evidence.
+
+Advice, opinions and plans need no label. Label once per list or section, not after every sentence; give a claim its own label only when its source differs from the rest of its list or section.

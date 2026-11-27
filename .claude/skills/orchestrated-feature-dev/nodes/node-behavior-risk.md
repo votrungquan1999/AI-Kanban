@@ -29,7 +29,9 @@ Work outward from the requirement and the existing system:
 For **each** risk, decide: does the requirement **imply** the expected behavior, or is it **silent**?
 
 - **Requirement-implied** → record the expected behavior. This becomes a Phase 5b adversarial check.
-- **Requirement-silent** → the requirement does not say what should happen. This is a product decision (a 2+ defensible-behaviors situation) for the orchestrator to escalate to the user **before** implementation.
+- **Requirement-silent** → the requirement does not say what should happen. Mark its kind so the orchestrator can sort it **before** implementation:
+  - **small rule** (a tie, a threshold, a report format) → also give the rule you would pick; the orchestrator decides and reports it.
+  - **owner decision** (what users see, money, data, or an architecture choice) → the orchestrator asks the owner.
 
 ## Output
 
@@ -45,9 +47,10 @@ Write the catalog to `<ws>/BEHAVIOR_RISKS.md`. It is **frozen** once written —
 - **Origin:** requirement-boundary | existing-invariant | interaction-edge | state-transition
 - **Requirement verdict:** implied | silent
 - **Expected behavior:** [what should happen — if implied] | [n/a — requirement silent]
-- **If silent — the open question:** [the product decision to escalate; else "n/a"]
+- **If silent — the open question:** [the decision the requirement leaves open; else "n/a"]
+- **If silent — kind:** small rule (pick: [the rule you would pick]) | owner decision | n/a
 
 ## R2 — ...
 ```
 
-Report back to the orchestrator: total risks catalogued, and how many are **requirement-silent** (these need user decisions before Phase 4).
+Report back to the orchestrator: total risks catalogued, and how many are **requirement-silent**, split into small rules and owner decisions (both are settled before Phase 4).

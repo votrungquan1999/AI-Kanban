@@ -28,7 +28,8 @@ re-solving solved problems and to bank reusable knowledge for your future self a
 
 Use **Memory** sparingly — it is paid in context on every turn. It is claude-code only,
 materializes on `npx @quanvo99/ai-rules@latest pull` into `.claude/rules/kb-memory.md`, and the command rejects
-a body over 200 characters or 2 lines.
+a body over 300 characters or 2 lines. In that file each memory sits under a **principle** heading;
+file one with `--principle <id>` (see [memory-guide.md](./reference/memory-guide.md#grouping-under-principles)).
 
 ## Passing note bodies
 
@@ -36,6 +37,15 @@ For anything multi-line (a Question's problem/resolution, a Blueprint body), **w
 content to a temp file and pass it with `--file` / `--problem-file` / `--resolution-file`** —
 quoting multi-line markdown on the shell is fragile. Short, single-line bodies can use the
 inline `--body` / `--problem` / `--resolution` flags, or pipe via stdin.
+
+## Editing or removing entries
+
+Both address an entry by its id (get the id from `kb search` / `kb get`):
+
+- **Update** — `npx @quanvo99/ai-rules@latest kb update <id> --title "..."` (or `--body` / `--body-file` / `--scope` / `--global` / `--principle <id|none>`, at least one required). Patches only the fields you pass; omitted fields stay intact.
+- **Delete** — `npx @quanvo99/ai-rules@latest kb delete <id>` removes an entry permanently.
+
+Both exit non-zero on an unknown `<id>`.
 
 ## Drafts Need Approval
 

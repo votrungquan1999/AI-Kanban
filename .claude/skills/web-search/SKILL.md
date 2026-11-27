@@ -1,15 +1,22 @@
 ---
 name: web-search
 description: Guides effective web search for researching solutions, finding documentation, and gathering external context. Use when researching errors, looking up documentation, comparing tools, finding best practices, or when user says "search for", "look up", "research this", or "find documentation".
-allowed-tools: Read, WebSearch, WebFetch, Bash, Write
-context: fork
-model: sonnet
-effort: low
+allowed-tools: Agent, Read, WebSearch, WebFetch, Bash, Write
 ---
 
 # Web Search
 
 Structured approach to searching the web for relevant information during development tasks.
+
+## Execution — delegate to a Sonnet 5 sub-agent
+
+You run in the **main session** as a thin coordinator — do **not** perform the steps below yourself:
+
+1. Resolve **the search goal / question to research** from the conversation (the one thing only you can see).
+2. Spawn **one** sub-agent — `Agent` tool, `subagent_type: general-purpose`, `model: "sonnet"` (Sonnet 5). Pass it the resolved goal, the workspace `<identifier>`, and the steps below as its instructions.
+3. It does all the searching/fetching/writing and returns a short summary + the artifact path. Relay those to the user; keep the fetched page content out of the main context.
+
+The steps below are the **sub-agent's** instructions.
 
 ## When to Use
 
@@ -96,6 +103,7 @@ When a search result looks promising:
 - ✅ Share sources with the user for transparency
 - ❌ Don't trust a single source blindly
 - ❌ Don't spend more than 2-3 search attempts on the same question
+- ✅ After the attempt cap, report the queries and sources you searched; never claim "nothing exists"
 - ❌ Don't copy code without understanding it
 
 ## Output

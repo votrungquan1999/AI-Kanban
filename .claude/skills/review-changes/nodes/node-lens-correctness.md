@@ -14,10 +14,9 @@ Find logic bugs and behavioral defects in the diff. Read `lens-common.md` for sh
    - Are failure paths handled, or do they fall through silently?
    - Concurrency / race conditions / async ordering where relevant
 
-3. **Performance regressions** (only if introduced by the change)
-   - Obviously inefficient algorithms, N+1 queries, work inside hot loops
+Performance is **out of scope** for this lens — the performance lens owns algorithmic complexity, N+1 queries, and hot-loop work. Raise a perf issue here only if it also causes a *wrong result* (e.g. a timeout that silently drops data), not merely slowness.
 
-Stay in the diff. A correctness claim about unchanged code is out of scope.
+Stay with what the change is answerable for. A correctness claim about unrelated unchanged code is out of scope — but a pre-existing bug this diff **newly reaches** (a new caller, a new input value, a branch that was unreachable before) is in scope; file it with that Origin and name the link.
 
 ## Output
 

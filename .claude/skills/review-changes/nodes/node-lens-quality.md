@@ -17,6 +17,10 @@ Review code quality and standards compliance in the diff. Read `lens-common.md` 
    - New dependencies are justified
    - Breaking changes are documented
 
+## Boundary with the architecture lens
+
+You own **micro-architecture** — hygiene inside the module: naming, structure, duplication, typing, comments, convention compliance. Feature-level design belongs to the **architecture** lens: layer/responsibility placement, data model, contract and route shape, coupling and external dependencies, alternative designs. If a concern is really "this decision is expensive to reverse once merged," leave it to architecture rather than filing it as a convention nit — that framing is what buries it.
+
 For substantial refactoring, recommend the `@code-refactoring` skill rather than prescribing a large rewrite inline. Keep nits proportionate — don't bury real issues under style.
 
 ## Output

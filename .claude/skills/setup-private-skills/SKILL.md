@@ -32,7 +32,7 @@ The practical consequence: **if private skills don't appear, it fails silently**
 
 ## Prerequisites
 
-1. CLI **≥ 0.2.0** for `upload` + scoped `pull` (≥ 0.2.1 for `sync`). Check with `npx @quanvo99/ai-rules@latest --version`.
+1. A CLI with the `skill` command group (`skill upload`/`list`/`update`/`delete`) — the old top-level `upload` command is gone, replaced by `skill upload`. Check with `npx @quanvo99/ai-rules@latest --version`. If a project already pulled this skill before the rename, re-run `pull`/`sync` there to refresh its local copy with these instructions.
 2. The `AI_RULES_SECRET` value, obtained from whoever owns the deployment's secret store. **Never commit it.**
 3. (Optional) A scope tag, only if you want to limit a skill to specific projects (e.g. `personal`, `work`, `client-x`). Omit it for global skills.
 
@@ -76,22 +76,50 @@ When the user wants to share a skill privately — either an existing local skil
 - Write `<skills-dir>/<skill-name>/SKILL.md` for the configured agent (`.claude/skills`, `.cursor/skills`, or `.agents/skills`). `<skill-name>` is short kebab-case. Frontmatter needs `name` and a one-line `description` that states what it does AND when to use it (the trigger phrases). Keep the body skimmable; add supporting files in the directory if the procedure needs references.
 - 🛑 **Stop and show the user the SKILL.md (and the exact upload command below) and wait for explicit approval before uploading.**
 
-**4b. Upload.** The directory must contain a `SKILL.md`; any other files become supporting files.
+**4b. Upload (`skill upload`).** The directory must contain a `SKILL.md`; every other file in it becomes a supporting file and is published with the skill.
+
+**What gets published.** Everything in the folder except:
+
+- **Built-in junk** — `.DS_Store`, `Thumbs.db`, `node_modules/`, `__pycache__/`, `.git/`, `*.pyc`. Always excluded; no configuration needed.
+- **Anything matching an optional `skill.ignore`** at the skill root — gitignore syntax, one pattern per line. Applied after the built-in rules, so a `!keep.pyc` line can re-include a default-dropped file.
+
+`skill.ignore` is itself published, so an installed copy filters the same way when someone edits and re-uploads from it. To keep one local, list `skill.ignore` inside itself.
+
+Keep the `+x` bit on a script (`scripts/*.sh`) and it survives the round trip — the file installs executable.
 
 ```bash
-AI_RULES_SECRET='<value>' npx @quanvo99/ai-rules@latest upload ./path/to/skill-dir \
+npx @quanvo99/ai-rules@latest skill upload ./path/to/skill-dir \
   --agent claude-code \
   --scope personal          # comma-separated; a skill can carry multiple scopes
 ```
 
 ```bash
 # Or, to publish globally (visible to every workspace):
-AI_RULES_SECRET='<value>' npx @quanvo99/ai-rules@latest upload ./path/to/skill-dir \
+npx @quanvo99/ai-rules@latest skill upload ./path/to/skill-dir \
   --agent claude-code \
   --global
 ```
 
 `--scope` or `--global` is required: pass `--scope personal,work` to tag the skill to specific workspaces, or pass `--global` to make it a **global skill** (empty scope — visible to every workspace). Omitting both flags is now an error. The skill name is the directory's basename. Re-uploading the same `{agent, name}` upserts (replaces) it.
+
+**4c. List, update, or delete a private skill.**
+
+```bash
+# Find the id you need below (prints id / name / agent / scopes for every private skill)
+npx @quanvo99/ai-rules@latest skill list
+
+# Patch one or more fields — send only what you're changing; omitted fields stay intact
+npx @quanvo99/ai-rules@latest skill update <id> --description "new description"
+npx @quanvo99/ai-rules@latest skill update <id> --content-file ./path/to/SKILL.md
+
+# Clear the description specifically (empty string clears; omitting --description leaves it untouched)
+npx @quanvo99/ai-rules@latest skill update <id> --description ""
+
+# Delete a private skill permanently
+npx @quanvo99/ai-rules@latest skill delete <id>
+```
+
+`skill update <id>` flags: `--name`, `--content` / `--content-file`, `--description`, `--scope` / `--global` — at least one is required. An unknown `<id>` on `update` or `delete` exits non-zero.
 
 ### 5. Pull
 

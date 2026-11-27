@@ -47,14 +47,14 @@ Apply **one refactoring at a time**. Do not combine multiple refactorings in a s
 
 1. Make the structural change
 2. Run tests immediately
-3. If tests pass → commit or move to next refactoring
+3. If tests pass → move to the next refactoring; commit only when the owner or the calling workflow asks
 4. If tests fail → revert and reassess
 
 ### Step 4: Verify Behavior Preserved
 
 1. **Check `package.json` scripts** for existing test and lint commands. Use the project's defined commands.
 2. Run the full related test suite
-3. Run linting to check for code quality issues
+3. Run linting once to check for code quality issues
 4. Confirm no behavioral change — only structural improvement
 
 ---
@@ -112,7 +112,7 @@ function processOrder(order) {
 - Group related functionality together
 
 ### Remove Duplication
-**When:** Similar code appears in multiple places.
+**When:** The same logic appears 3+ times.
 - Extract shared logic into a utility or helper
 - Use composition over copy-paste
 
@@ -122,7 +122,7 @@ function processOrder(order) {
 
 - ✅ One refactoring at a time — keep changes atomic
 - ✅ Run tests after every change
-- ✅ Commit after each successful refactoring (or after a logical group)
+- ✅ Commit only when the owner or the calling workflow asks — then after each successful refactoring (or a logical group)
 - ✅ Preserve public interfaces when possible
 - ✅ Use IDE rename/move tools when available for safety
 - ❌ Don't refactor and add features simultaneously

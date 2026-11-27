@@ -1,15 +1,22 @@
 ---
 name: find-patterns
 description: Extracts architectural, testing, or database patterns from the codebase using structured search methodology. Use when understanding conventions, finding patterns, or when user says "find patterns", "how do we do X here", "what's the convention", or "show me the pattern".
-allowed-tools: Read, Grep, Glob, Write
-context: fork
-model: sonnet
-effort: medium
+allowed-tools: Agent, Read, Grep, Glob, Write
 ---
 
 # Find Patterns
 
 A structured approach to extract established coding patterns from the existing codebase, so new code adheres to existing conventions.
+
+## Execution — delegate to a Sonnet 5 sub-agent
+
+You run in the **main session** as a thin coordinator — do **not** perform the steps below yourself:
+
+1. Resolve **the pattern type / scope to extract** (and the surrounding task it's for) from the conversation (the one thing only you can see).
+2. Spawn **one** sub-agent — `Agent` tool, `subagent_type: general-purpose`, `model: "sonnet"` (Sonnet 5). Pass it the resolved scope, the workspace `<identifier>`, and the steps below as its instructions. The codebase is on disk in the shared working directory.
+3. It does all the searching/reading/writing and returns a short summary + the artifact path. Relay those to the user; keep the file reads out of the main context.
+
+The steps below are the **sub-agent's** instructions.
 
 ## Purpose
 

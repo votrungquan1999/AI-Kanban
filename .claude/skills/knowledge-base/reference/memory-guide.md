@@ -19,11 +19,24 @@ If it's "look it up when relevant", it's a TIL or Blueprint — not a Memory.
 
 `npx @quanvo99/ai-rules@latest kb capture memory` — the command **rejects (exit non-zero)** a body that is:
 
-- longer than **200 characters**, OR
+- longer than **300 characters**, OR
 - more than **2 lines**.
 
 Keep each memory to 1–2 lines. `--title` is optional — when omitted, the title is derived
 from the first line.
+
+## Grouping under principles
+
+`kb-memory.md` groups memories under **principle** headings: each heading says what its rules share
+and why, and the memories under it are the concrete cases. Memories with no principle land under
+"Other rules" at the end.
+
+- **File a memory** — `kb capture memory ... --principle <id>`, or `kb update <id> --principle <id>`
+  for an existing one (`--principle none` unfiles it). The id must be a principle entry; find it
+  with `kb search "<words>" --type principle`.
+- **Add a principle** — `kb capture principle --title "<heading>" --body "<one-line reason>" --order <n>`.
+  Principles are always global; headings print in ascending `--order`, and one with no memories is
+  not printed. Like any capture it is a draft until approved.
 
 ## When NOT to use Memory
 

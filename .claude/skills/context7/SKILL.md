@@ -1,15 +1,22 @@
 ---
 name: context7
 description: Queries up-to-date library documentation and code examples via Context7 MCP server. Use when looking up API docs, finding code examples, checking framework patterns, or when user says "look up docs", "check documentation", or "how does this library work".
-allowed-tools: Read, mcp__context7__resolve-library-id, mcp__context7__query-docs, Write
-context: fork
-model: sonnet
-effort: low
+allowed-tools: Agent, Read, mcp__context7__resolve-library-id, mcp__context7__query-docs, Write
 ---
 
 # Context7
 
 Query up-to-date documentation and code examples for any programming library or framework using the Context7 MCP server.
+
+## Execution — delegate to a Sonnet 5 sub-agent
+
+You run in the **main session** as a thin coordinator — do **not** perform the steps below yourself:
+
+1. Resolve **the library and the specific question to look up** from the conversation (the one thing only you can see).
+2. Spawn **one** sub-agent — `Agent` tool, `subagent_type: general-purpose`, `model: "sonnet"` (Sonnet 5). Pass it the resolved library + question, the workspace `<identifier>`, and the steps below as its instructions.
+3. It does all the querying/reading/writing and returns a short summary + the artifact path. Relay those to the user; keep the heavy doc content out of the main context.
+
+The steps below are the **sub-agent's** instructions.
 
 ## When to Use
 
@@ -81,7 +88,8 @@ Args:
 - ✅ Write specific, detailed queries
 - ✅ Check the library version matches your project's version
 - ✅ Combine multiple query results for comprehensive understanding
-- ✅ Fall back to `@web-search` if Context7 doesn't have the library
+- ✅ Fall back to `@web-search` only when the library is missing from Context7
+- ✅ If the Context7 tool itself is down or erroring, stop and tell the user — don't fall back to `@web-search`
 - ❌ Don't query without resolving the library ID first
 - ❌ Don't exceed the per-question call limits
 - ❌ Don't include sensitive information (API keys, credentials) in queries

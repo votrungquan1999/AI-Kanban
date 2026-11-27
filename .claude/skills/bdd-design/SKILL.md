@@ -11,7 +11,7 @@ Behavior-Driven Development: define behavior through scenarios first, then imple
 
 1. **Scenarios First** - Write behavior scenarios before any implementation
 2. **One Scenario at a Time** - Write one scenario → run to see result → implement → verify → next
-3. **Meaningful Red** - A red run only counts when a behavior assertion fails; structural failures (404, missing route/field) validate nothing — scaffold first, or expect green from the start when no real red is possible
+3. **Meaningful Red** - A red run only counts when a behavior assertion fails; structural failures (404, missing route/field) validate nothing — scaffold first; when no real red is possible, write the test only if it checks something that could break later, otherwise skip it and say why
 4. **Client's Language First** - Identify the client/stakeholder first (business/end-user by default), then write each behavior in their language and value — never implementation mechanics (see [Write Behaviors in the Client's Language](#write-behaviors-in-the-clients-language))
 5. **Living Documentation** - Scenarios serve as both tests and documentation
 6. **Ubiquitous Language** - Use domain language that stakeholders understand
@@ -84,9 +84,11 @@ Write scenarios describing behavior using three stages:
 **For EACH scenario, follow this loop. Do NOT batch scenarios or skip steps.**
 
 **CRITICAL: ONE TEST AT A TIME**
-Never batch behaviors or write multiple tests at once. Each step must be exactly one behavior, which translates to exactly one test, followed immediately by its implementation.
+Never batch behaviors or write multiple tests at once. Write one test, then the implementation that makes it pass, before the next test.
 
 ### Step 1: Write ONE Scenario Test
+
+Before writing a new test, look for an existing test that already drives the same write or flow; if one does, add the new assertion there and write no new test.
 
 1. Write the test for ONE scenario
 2. Use the Setup/Action/Assert (Given/When/Then) structure in your test:
@@ -122,11 +124,12 @@ Never batch behaviors or write multiple tests at once. Each step must be exactly
 1. **Check `package.json` scripts** first to see if there's an existing command for running tests (e.g., `npm test`, `npm run test:unit`). Use the project's defined command instead of crafting your own.
 2. **Scaffold the structure the test touches first** (register the route, add the field, create the empty handler returning a default) so the run can only fail on the behavior assertion. Scaffolding contains no behavior logic.
 3. Run the new scenario test BEFORE writing any behavior logic
+   - During red/green run only the new test by name (e.g. `-t "<name>"`); run its whole file once when the behavior is green.
 4. If it **fails on the behavior assertion** → real red, proceed to Step 3 (implement)
 5. If it **fails structurally** (404 route not registered, missing field/column, import error) → that red validates nothing; fix the scaffolding and run again
 6. If it **already passes** → behavior is already covered, skip Step 3, go back to Step 1
 
-**When no meaningful red is possible** — the minimal scaffolding needed to avoid a structural failure already IS the implementation (e.g., a field that just renders, a trivial pass-through endpoint) — write just enough code to pass first and expect **green from the first run**. State this explicitly. Do NOT manufacture a useless red (asserting against a 404 or a missing field) just to follow the ritual.
+**When no meaningful red is possible** — the minimal scaffolding needed to avoid a structural failure already IS the implementation (e.g., a field that just renders, a trivial pass-through endpoint) — write the test only if it checks something that could break later; otherwise skip the test and say why. Do NOT manufacture a useless red (asserting against a 404 or a missing field) just to follow the ritual.
 
 **This gate is NON-NEGOTIABLE. Writing behavior logic before running the test = violation.**
 
@@ -134,6 +137,7 @@ Never batch behaviors or write multiple tests at once. Each step must be exactly
 
 1. Write the **minimum** code needed to make this ONE scenario pass
 2. Focus on correctness, not elegance
+3. Comments describe the code as it is: no ticket IDs, no "now/removed/changed" notes
 
 ### 🚫 Step 4: GATE — Verify
 
@@ -149,9 +153,9 @@ Never batch behaviors or write multiple tests at once. Each step must be exactly
 
 After all scenarios pass:
 
-1. Run the full test suite
+1. Run the test suites covering the files this feature touched
 2. Review scenarios as living documentation — do they clearly describe the feature?
-3. Run linting
+3. Run linting once
 4. Verify all acceptance criteria are covered by scenarios
 
 ---
@@ -181,13 +185,18 @@ After all scenarios pass:
 ## Best Practices
 
 - ✅ Write scenarios in domain language, not code language
+- ✅ **Test at the integration level by default** — drive the real flow through the client-facing entry point with real collaborators; mock only what you cannot run (third-party calls, payments, clocks). A scenario whose collaborators are mocked verifies the mock, and stays green while the wiring is broken. Survey the project's existing test patterns before choosing; `@feature-dev-lite` and `@orchestrated-feature-dev` carry the full survey + ask-the-user protocol for when no harness exists.
+- ✅ For UI, drive the page or card that composes the small components and reach them through it; don't add a test per small component. Hook and pure-logic tests stay.
+- ✅ Test a race or double submit by firing the same calls at once (e.g. `Promise.all`) and asserting the outcome; never force the overlap with held locks or DB internals, which ties the test to one guard design. Optionally check once that it fails with the guard removed and report the rate.
 - ✅ One scenario = one behavior = one `it()` block
 - ✅ Use `describe` to group related tests, not to label a single test
+- ✅ One test file per endpoint or feature under test; never split one feature by concern (matching, paging, validation). Tests for shared middleware live with the middleware, not with a route that uses it.
 - ✅ Run the test after writing it, BEFORE writing implementation
 - ✅ Keep scenarios independent — no test ordering dependencies
 - ✅ Use descriptive `it()` names that read like sentences
 - ❌ Don't wrap a single `it()` in its own `describe` just to add a label prefix
 - ❌ Don't write implementation-specific scenarios ("When the database query returns...")
+- ❌ Don't assert on log output or spy on a logger; a change that only touches logging ships without a test — say so.
 - ❌ Don't write multiple scenarios before implementing any
 - ❌ Don't skip the test run — always run the test before implementing
 - ❌ Don't write behavior logic before seeing the test result (structural scaffolding is allowed and encouraged)

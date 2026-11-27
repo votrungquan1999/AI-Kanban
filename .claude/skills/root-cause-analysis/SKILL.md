@@ -1,13 +1,22 @@
 ---
 name: root-cause-analysis
 description: Structured debugging by isolating root cause using falsifiable hypotheses and binary search. Strictly forbids fixing — output is a proof of bug. Use when debugging, investigating failures, or when user says "find the bug", "root cause", "why is this failing", or "debug this".
-allowed-tools: Read, Grep, Glob, Bash, Write
-context: fork
+allowed-tools: Agent, Read, Grep, Glob, Bash, Write
 ---
 
 # Root Cause Analysis
 
 A strictly investigative, scientific approach to identifying the root cause of a defect. Enforces disciplined debugging (Cause Elimination and Divide & Conquer) to prevent guesswork.
+
+## Execution — delegate to a Sonnet 5 sub-agent
+
+You run in the **main session** as a thin coordinator — do **not** perform the steps below yourself:
+
+1. Resolve **the failure to investigate** from the conversation — including any stack traces, failed attempts, or evidence already gathered in earlier turns. Pass these along so the sub-agent doesn't re-derive what you already know.
+2. Spawn **one** sub-agent — `Agent` tool, `subagent_type: general-purpose`, `model: "sonnet"` (Sonnet 5). Pass it the failure + gathered evidence, the workspace `<identifier>`, and the steps below as its instructions. The codebase is on disk in the shared working directory.
+3. It does all the investigation and returns the proof-of-bug summary + the artifact path. Relay those to the user; keep the investigation reads out of the main context.
+
+The steps below are the **sub-agent's** instructions.
 
 ## Purpose
 

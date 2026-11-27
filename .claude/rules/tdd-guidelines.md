@@ -27,7 +27,7 @@ Test-Driven Development: write tests before implementation using red-green-refac
 4. Scaffold the structure the test touches (route, empty handler, field, empty function returning a default) so the only possible failure is behavioral — scaffolding contains no behavior logic
 5. MUST run the test — expect a **meaningful failure**: the behavior assertion fails. A structural error (404 route not registered, missing field/column/export, import error) is NOT a valid red; fix the scaffolding and run again
 
-**When no meaningful red is possible** — the minimal scaffolding needed to avoid a structural failure already IS the implementation (trivial pass-through, static field, simple wiring) — write just enough code to pass first and expect **green from the first run**. State explicitly that the test started green and why no meaningful red exists. Do NOT manufacture a useless red (asserting against a 404 or a missing field) just to follow the ritual.
+**When no meaningful red is possible** — the minimal scaffolding needed to avoid a structural failure already IS the implementation (trivial pass-through, static field, simple wiring) — write the test only if it checks something that could break later; otherwise skip the test and say why. Do NOT manufacture a useless red (asserting against a 404 or a missing field) just to follow the ritual.
 
 ### Green: Make Test Pass
 
@@ -74,6 +74,7 @@ Continue cycle for each test scenario until all implemented and passing.
 - ❌ Write behavior logic before the test exists (structural scaffolding is allowed and encouraged)
 - ❌ Consider test passed when the test not actually run
 - ❌ Treat a structural failure (404, missing route/field/import) as a valid red — it validates nothing
+- ❌ Put ticket IDs or edit-history notes ("now uses", "removed", "started green") in code or test comments — comments describe the code as it is
 
 ---
 
@@ -85,4 +86,4 @@ Continue cycle for each test scenario until all implemented and passing.
 Both share the same discipline:
 
 - **Test-run GATE** — write the test and run it before writing behavior logic (BDD is also test-first; the two never conflict).
-- **One at a time** — one scenario (BDD) or one test (TDD), run it, see a meaningful result (real red, or expected green when no real red is possible), then move to the next.
+- **One at a time** — one scenario (BDD) or one test (TDD), run it, see a real red (when none is possible, keep the test only if it checks something that could break later), then move to the next.
