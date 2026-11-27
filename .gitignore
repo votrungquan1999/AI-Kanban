@@ -40,3 +40,6 @@ VALIDATION_REPORT.md
 # OS / editor
 .DS_Store
 *.swp
+
+# Personal knowledge-base memories written by ai-rules sync; never commit
+.claude/rules/kb-memory.md
